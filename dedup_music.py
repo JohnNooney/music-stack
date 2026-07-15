@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import string
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,8 +42,14 @@ FORMAT_PRIORITY = {".flac": 1, ".mp3": 2}  # lower = better
 SAME_FORMAT_THRESHOLD = 0.98  # much stricter for same-format comparisons
 
 
+def nfc(s: str) -> str:
+    """Normalize a string to Unicode NFC form for consistent comparisons."""
+    return unicodedata.normalize("NFC", s)
+
+
 def normalize(stem: str) -> str:
     """Lowercase, strip punctuation and extra whitespace for comparison."""
+    stem = nfc(stem)
     stem = stem.lower()
     stem = stem.translate(str.maketrans("", "", string.punctuation))
     stem = re.sub(r"\s+", " ", stem).strip()
@@ -186,6 +193,17 @@ def move_to_trash(
             manifest.append({"action": "move", "from": str(dest), "to": str(file)})
 
 
+def _read_text_flexible(path: Path) -> tuple[str, str]:
+    """Read a file, trying UTF-8 first and falling back to latin-1."""
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            return raw.decode(enc), enc
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace"), "utf-8"
+
+
 def update_playlists(
     folder: Path,
     removed_names: set[str],
@@ -203,11 +221,12 @@ def update_playlists(
     Returns a dict of {abs_playlist_path: entries_removed} for affected playlists.
     """
     stats: dict[Path, int] = {}
+    removed_nfc = {nfc(name) for name in removed_names}
     for playlist in folder.iterdir():
         if playlist.suffix.lower() not in PLAYLIST_EXTS:
             continue
         try:
-            original = playlist.read_text(encoding="utf-8", errors="replace")
+            original, _encoding = _read_text_flexible(playlist)
         except OSError as exc:
             logging.warning("  Cannot read playlist %s: %s", playlist.name, exc)
             continue
@@ -220,8 +239,8 @@ def update_playlists(
                 kept_lines.append(line)
                 continue
             # Extract just the filename portion of the entry
-            entry_name = Path(stripped.replace("\\", "/")).name
-            if entry_name in removed_names:
+            entry_name = nfc(Path(stripped.replace("\\", "/")).name)
+            if entry_name in removed_nfc:
                 removed_lines.append(stripped)
                 logging.info(
                     "  M3U  remove '%s' from %s%s",
@@ -233,9 +252,10 @@ def update_playlists(
                 kept_lines.append(line)
 
         if removed_lines:
+            new_text = "".join(kept_lines)
             stats[playlist.resolve()] = len(removed_lines)
             if not dry_run:
-                playlist.write_text("".join(kept_lines), encoding="utf-8")
+                playlist.write_text(new_text, encoding="utf-8")
                 logging.info("  M3U  updated %s  (%d entr%s removed)",
                              playlist.name, len(removed_lines),
                              "y" if len(removed_lines) == 1 else "ies")
@@ -246,6 +266,86 @@ def update_playlists(
                         "original_content": original,
                     })
     return stats
+
+
+def ensure_playlist_files(
+    root: Path,
+    folder_map: dict[Path, list[Path]],
+    dry_run: bool,
+    manifest: list | None = None,
+    force_refresh: bool = False,
+) -> dict[Path, bool]:
+    """
+    Create or refresh root-level .m3u files for each immediate subfolder of
+    root/Playlists that contains audio files.
+
+    The generated playlist is named <folder>.m3u and sits at `root`; each line
+    is a relative POSIX path like Playlists/<folder>/<filename>. Existing
+    playlists are only rewritten when their set of entries does not match the
+    actual audio files, so a manually-curated playlist is preserved as long as
+    it already reflects the current files.
+    """
+    playlists_dir = root / "Playlists"
+    if not playlists_dir.is_dir():
+        return {}
+
+    refreshed: dict[Path, bool] = {}
+    for folder in folder_map:
+        if folder.parent != playlists_dir:
+            continue
+        audio_files = [
+            f for f in folder.iterdir()
+            if f.is_file() and f.suffix.lower() in AUDIO_EXTS
+        ]
+        if not audio_files:
+            continue
+
+        playlist_path = root / f"{folder.name}.m3u"
+        entries = sorted(nfc(f.name) for f in audio_files)
+        new_content_lines = ["#EXTM3U"]
+        new_content_lines.extend(
+            f"Playlists/{nfc(folder.name)}/{entry}" for entry in entries
+        )
+        new_content = "\n".join(new_content_lines) + "\n"
+
+        original_text = ""
+        existing_entries: set[str] = set()
+        existed = playlist_path.exists()
+        if existed:
+            try:
+                original_text, _ = _read_text_flexible(playlist_path)
+            except OSError as exc:
+                logging.warning(
+                    "  Cannot read existing playlist %s: %s", playlist_path.name, exc
+                )
+                continue
+            for line in original_text.splitlines():
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    existing_entries.add(nfc(Path(stripped.replace("\\", "/")).name))
+
+        if existed and existing_entries == set(entries) and not force_refresh:
+            continue
+
+        action = "playlist_refresh" if existed else "playlist_create"
+        if not dry_run:
+            playlist_path.write_text(new_content, encoding="utf-8")
+        logging.info(
+            "  PLAYLIST  %s  %s  (%d entries)%s",
+            action,
+            playlist_path.name,
+            len(entries),
+            "  [dry-run]" if dry_run else "",
+        )
+        refreshed[playlist_path.resolve()] = True
+        if manifest is not None:
+            manifest.append({
+                "action": action,
+                "playlist": str(playlist_path.resolve()),
+                "original_content": original_text,
+            })
+
+    return refreshed
 
 
 def do_rollback(manifest_path: Path) -> None:
@@ -273,11 +373,16 @@ def do_rollback(manifest_path: Path) -> None:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(dst))
             print(f"  RESTORED  {dst}")
-        elif action == "playlist_edit":
+        elif action in ("playlist_edit", "playlist_refresh", "playlist_create"):
             playlist = Path(entry["playlist"])
             original_content = entry["original_content"]
-            playlist.write_text(original_content, encoding="utf-8")
-            print(f"  RESTORED  {playlist}")
+            if original_content:
+                playlist.write_text(original_content, encoding="utf-8")
+                print(f"  RESTORED  {playlist}")
+            else:
+                if playlist.exists():
+                    playlist.unlink()
+                print(f"  DELETED  {playlist}")
         else:
             print(f"  UNKNOWN action '{action}', skipping.")
             errors += 1
@@ -310,6 +415,11 @@ def main() -> None:
         "--rollback",
         metavar="MANIFEST",
         help="Path to a manifest JSON file produced by a previous live run. Undoes all changes.",
+    )
+    parser.add_argument(
+        "--refresh-playlists",
+        action="store_true",
+        help="Recreate managed root-level playlists even when their entries already match.",
     )
     args = parser.parse_args()
 
@@ -347,6 +457,7 @@ def main() -> None:
     total_moved = 0
     global_losers: set[str] = set()  # all trashed basenames, for root-level m3u update
     m3u_stats: dict[Path, int] = {}   # absolute playlist path -> entries removed
+    playlist_refreshes: dict[Path, bool] = {}  # root-level playlists created/refreshed
     live_manifest: list | None = None if args.dry_run else manifest
 
     for folder, files in sorted(folder_map.items()):
@@ -404,6 +515,18 @@ def main() -> None:
         root_stats = update_playlists(root, global_losers, args.dry_run, live_manifest)
         m3u_stats.update(root_stats)
 
+    # Ensure each Playlists/<name>/ folder has a matching root-level <name>.m3u
+    playlists_dir = root / "Playlists"
+    if playlists_dir.is_dir():
+        logging.info("Ensuring root-level playlist files for %s", playlists_dir)
+        playlist_refreshes = ensure_playlist_files(
+            root,
+            folder_map,
+            args.dry_run,
+            live_manifest,
+            force_refresh=args.refresh_playlists,
+        )
+
     # Write manifest for live runs
     if not args.dry_run and manifest:
         manifest_data = {
@@ -443,6 +566,12 @@ def main() -> None:
         print("  No duplicates found.")
 
     # M3U section
+    if playlist_refreshes:
+        print()
+        print(f"  Playlist files created/refreshed: {len(playlist_refreshes)}")
+        for pl_path in sorted(playlist_refreshes, key=str):
+            print(f"    {pl_path.relative_to(root)}")
+
     if m3u_stats:
         print()
         total_m3u_files = len(m3u_stats)
