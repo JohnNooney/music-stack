@@ -208,7 +208,8 @@ def _clear_folder(root: Path, folder: Path, plan: Plan) -> None:
             report.add("Left in place (unexpected; folder kept)", rel + "/")
         elif _is_handled_audio(path):
             continue
-        elif path.name in ARTIFACT_NAMES:
+        elif path.name in ARTIFACT_NAMES or path.suffix.lower() in SIDECAR_EXTS:
+            # An orphaned sidecar (its audio never downloaded or is elsewhere) is playlist debris.
             dest = f"{ARTIFACTS_DIR}/{nfc(folder.name)}/{path.name}"
             if (root / dest).exists():
                 plan.ops.append(Trash(path))

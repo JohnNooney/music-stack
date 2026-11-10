@@ -284,6 +284,28 @@ class MigrateFilePhaseTest(ToolTestCase):
         self.assertTrue({"Playlists/Bussin/Untitled.m3u", "Playlists/Bussin/$uicideboy$ - 2nd Hand.m3u",
                          "Playlists/Что cлучилось/dedup_music.log"} <= self.trashed())
 
+    def test_orphaned_lyrics_in_a_legacy_playlist_folder_are_archived(self) -> None:
+        self.lib.write("Playlists/Hummers/DREAMS COME TRUE - Approach.lrc", "[00:01.00]lyrics")
+        self.lib.write("Playlists/Hummers/errors.txt",
+                       "123 | DREAMS COME TRUE - Approach | not available\n")
+
+        self.run_tool("migrate")
+
+        self.assertFalse(self.lib.path("Playlists").exists())
+        self.assertEqual(
+            self.lib.path(".artifacts/Hummers/DREAMS COME TRUE - Approach.lrc").read_text(),
+            "[00:01.00]lyrics")
+
+    def test_orphaned_lyrics_already_archived_are_trashed(self) -> None:
+        self.lib.write("Playlists/Hummers/A - Song.lrc", "new lyrics")
+        self.lib.write(".artifacts/Hummers/A - Song.lrc", "old lyrics")
+
+        self.run_tool("migrate")
+
+        self.assertFalse(self.lib.path("Playlists").exists())
+        self.assertEqual(self.lib.path(".artifacts/Hummers/A - Song.lrc").read_text(), "old lyrics")
+        self.assertIn("Playlists/Hummers/A - Song.lrc", self.trashed())
+
     def test_unexpected_files_keep_a_legacy_folder_in_place_and_are_reported(self) -> None:
         self.lib.write("Playlists/Mix/notes.pdf", b"%PDF")
 

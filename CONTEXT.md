@@ -71,7 +71,7 @@ A `Playlists/<Name>/` folder from before the migration that held a playlist's au
 _Avoid_: playlist directory
 
 **Playlist artifacts**:
-Non-audio leftovers from a playlist download (failed-download log, playlist cover), kept per playlist in a hidden part of the library that Jellyfin does not scan.
+Non-audio leftovers from a playlist download (failed-download log, playlist cover, lyric sidecar whose audio never downloaded), kept per playlist in a hidden part of the library that Jellyfin does not scan.
 _Avoid_: extras, junk
 
 ### Operations
