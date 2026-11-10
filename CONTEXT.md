@@ -62,6 +62,10 @@ _Avoid_: playlist sync (when meaning the one direction only)
 A playlist file written from a Jellyfin playlist so its contents are backed up and its history is reviewable in git.
 _Avoid_: backup playlist
 
+**Import reference**:
+The Deezer list a playlist had at its last playlist import, kept as the baseline for telling songs new on Deezer apart from songs removed by hand.
+_Avoid_: previous playlist, snapshot
+
 **Legacy playlist folder**:
 A `Playlists/<Name>/` folder from before the migration that held a playlist's audio directly; a source of pseudo-albums, never recreated.
 _Avoid_: playlist directory
