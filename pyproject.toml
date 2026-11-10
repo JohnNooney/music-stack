@@ -1,0 +1,10 @@
+[project]
+name = "reorganize_playlists"
+version = "0.1.0"
+description = "Album-folder migration and Jellyfin-owned playlists for the Deemix library"
+requires-python = ">=3.11"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["reorganize_playlists", "tests"]
