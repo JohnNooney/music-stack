@@ -9,7 +9,7 @@ Deemix downloads music into one library on disk. Jellyfin serves that library, l
 | `jellyfin` | `jellyfin/jellyfin:12.4` | 8096/tcp (web), 7359/udp (discovery) | `./config` → `/config`, `./cache` → `/cache`, `~/Music/Deemix` → `/media` |
 | `deemix` | `ghcr.io/bambanah/deemix:v4.8.0` | 6595 (web) | `~/Music/Deemix` → `/downloads`, `./deemix-config` → `/config` |
 
-Both run as uid/gid 501. `config/`, `cache/`, `deemix-config/` and `.env` are git-ignored. `deemix-config/` holds Deemix's credentials, queue and logs, which used to live in the music library.
+Both run as uid/gid 501. `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs) and `deemix-config/` (credentials, queue, logs — they used to live in the music library). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`.
 
 ```bash
 docker compose up -d                  # start both

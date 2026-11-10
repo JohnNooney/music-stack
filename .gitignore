@@ -1,7 +1,15 @@
 cache/
-config/
-# Deemix config: credentials, queue, logs (.env and __pycache__/ are covered below)
-deemix-config/
+# Jellyfin config: track the XML settings the library layout depends on; ignore db, metadata, logs
+/config/*
+!/config/config/
+!/config/root/
+!/config/plugins/
+/config/plugins/*
+!/config/plugins/configurations/
+# Deemix config: keep config.json (the tool reads its templates) but not credentials, queue, logs
+/deemix-config/*
+!/deemix-config/config.json
+!/deemix-config/config.json.before-structure-playlist
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
