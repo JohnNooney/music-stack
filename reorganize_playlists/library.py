@@ -81,7 +81,8 @@ def scan(root: Path) -> list[AudioFile]:
     return files
 
 
-def _normalise_words(text: str) -> str:
+def normalise_words(text: str) -> str:
+    """NFC, case-folded, punctuation stripped, whitespace collapsed — the loose tag comparison."""
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", nfc(text).casefold())).strip()
 
 
@@ -90,7 +91,7 @@ def song_key(tags: Tags, fallback: str) -> str:
     if tags.isrc:
         return f"isrc:{tags.isrc}"
     if tags.title:
-        return f"name:{_normalise_words(tags.artist)}|{_normalise_words(tags.title)}"
+        return f"name:{normalise_words(tags.artist)}|{normalise_words(tags.title)}"
     return f"path:{fallback}"
 
 

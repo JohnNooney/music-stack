@@ -66,6 +66,23 @@ class Executor:
         self._record(op="write", path=str(path), previous=previous)
         return True
 
+    def rewrite(self, path: Path, data: bytes) -> bool:
+        """Back up `path`'s current bytes to the trash, then replace its contents."""
+        if self.dry_run:
+            return True
+        if not path.exists():
+            return False
+        backup = self.trash_path(path)
+        if backup.exists():
+            return False
+        self._mkdirs(backup.parent)
+        shutil.copy2(path, backup)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(path)
+        self._record(op="rewrite", path=str(path), backup=str(backup))
+        return True
+
     def remove_dir(self, path: Path) -> bool:
         if self.dry_run:
             return True
@@ -119,6 +136,13 @@ def rollback(manifest_path: Path, jellyfin: JellyfinClient | None) -> list[str]:
                 path.unlink(missing_ok=True)
             else:
                 path.write_bytes(base64.b64decode(action["previous"]))
+        elif op == "rewrite":
+            path, backup = Path(action["path"]), Path(action["backup"])
+            if not backup.exists():
+                problems.append(f"missing backup, cannot restore: {backup}")
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(backup), str(path))
         elif op in ("jellyfin_create", "jellyfin_append"):
             if jellyfin is None:
                 problems.append(f"Jellyfin not available, not undone: {op} {action['playlist_id']}")

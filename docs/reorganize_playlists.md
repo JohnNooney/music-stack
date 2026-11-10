@@ -24,6 +24,7 @@ python3 -m reorganize_playlists [global options] <command> [options]
 | `migrate --phase playlists [--dry-run]` | yes | **Playlist phase.** Triggers a Jellyfin scan and waits for it, then creates one Jellyfin playlist per root playlist file, owned by `JELLYFIN_USER` and in file order, with the archived cover. Writes `.playlists/map.json`, moves each playlist file to `.playlists/imports/<Name>.m3u8` (trash keeps the original), then exports and commits. Refuses if any entry is not in Jellyfin. |
 | `import [--dry-run]` | yes | **After every Deemix session.** Scans and waits, then does a three-way merge for each root `*.m3u8` (details below). Archives root `errors.txt`/`cover.jpg` to that playlist's artifacts and uploads the cover. Moves the playlist file to `.playlists/imports/`, then exports and commits. |
 | `export` | yes | Writes `.playlists/jellyfin/<Name>.m3u8` for each of the user's playlists, plus `.inventory.tsv`, and commits. |
+| `retag [--dry-run]` | no | Rewrites `ARTIST`, `ALBUM` and `ALBUMARTIST` in every audio file to match Deezer (the same lookup as `migrate`: `BARCODE` then `ISRC`), so embedded tags agree with the album folders. Original bytes go to the trash first; rewritten files are re-read and verified. Reports misplaced files, cosmetic-only differences (not written) and lookup failures (folder fallback, artist kept). Makes **no Jellyfin calls** — rescan the library yourself afterwards. |
 | `rollback <manifest.json>` | only to undo Jellyfin changes | Undoes a live run newest-first: moves files back, restores or deletes written files, recreates removed folders, deletes Jellyfin playlists the run created and removes entries it appended. The manifest is renamed `*.rolled-back.json`. |
 
 Each run prints a report and saves it to `<root>/.reorganize/runs/<run id>/report.txt`. Live runs also write `manifest.json` there. Dry runs touch nothing in the library except that state folder and the Deezer cache.
@@ -37,6 +38,14 @@ Each run prints a report and saves it to `<root>/.reorganize/runs/<run id>/repor
 - **New album folders** get `cover.jpg` from the canonical copy's embedded art. Existing folders are merged into, not touched.
 - **`.lrc` sidecars** follow their audio. A duplicate copy's sidecar is adopted only if the canonical copy has none, and is trashed otherwise.
 - **Self-check** after a live file phase: the set of unique songs is the same before and after, and every trashed audio file has a canonical copy of the same song.
+
+## How retag decides
+
+- **Canonical values.** `ALBUM` ← the Deezer album title, `ALBUMARTIST` ← the album's main artist (one value), `ARTIST` ← the track's contributors. Deezer names are written verbatim. A file is rewritten only when a field differs after normalisation (NFC, case-folded, punctuation stripped); when any field differs substantively all three are written. Cosmetic-only differences are reported, not written.
+- **Misplaced.** If the `ALBUM` tag agrees with Deezer but the album folder does not, the file sits in the wrong folder: reported and never moved (moving is `migrate`'s job). Other fields are still retagged when they differ substantively.
+- **Fallback.** When Deezer can't resolve a file, `ALBUM`/`ALBUMARTIST` fall back to the album folder name (`<Artist> - <Album>`) and `ARTIST` is kept as tagged; the file is listed under *Deezer lookup failed*.
+- **Writer.** Only `ARTIST`/`ALBUM`/`ALBUMARTIST` change — multi-value artists stay multi-value (repeated Vorbis comments, NUL-separated ID3 values). FLAC keeps vendor string, pictures and all other comments; MP3 keeps its ID3 version and every other frame.
+- **Safe to re-run.** A clean library produces an empty plan, so `retag` also works after future Deemix downloads. `rollback` restores the original bytes from the trash.
 
 ## Import merge rules
 

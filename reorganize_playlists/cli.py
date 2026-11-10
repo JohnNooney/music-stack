@@ -1,4 +1,4 @@
-"""Command-line entry point: `migrate`, `import`, `export`, `rollback`."""
+"""Command-line entry point: `migrate`, `import`, `export`, `retag`, `rollback`."""
 
 from __future__ import annotations
 
@@ -18,10 +18,14 @@ from reorganize_playlists.jellyfin import (
 from reorganize_playlists.importer import run_import
 from reorganize_playlists.library import AudioFile, group_songs, scan
 from reorganize_playlists.migrate import (
-    CONFLICTS, MOVES, TRASHED, Move, Plan, RemoveDir, Trash, Write, plan_files, self_check,
+    CONFLICTS, MOVES, TRASHED, Move, Plan, RemoveDir, Rewrite, Trash, Write, plan_files, self_check,
 )
 from reorganize_playlists.progress import Progress
 from reorganize_playlists.report import Report
+from reorganize_playlists.retag import (
+    COSMETIC, LOOKUP_FAILED, MISPLACED, plan_retag, self_check as retag_self_check,
+)
+from reorganize_playlists.tags import write_tags
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_ROOT = Path("/Users/john/Music/Deemix")
@@ -86,6 +90,9 @@ def _parser() -> argparse.ArgumentParser:
     imp = commands.add_parser("import", help="import root-level Deemix playlist files after a Deemix session")
     imp.add_argument("--dry-run", action="store_true")
     commands.add_parser("export", help="export Jellyfin playlists and the inventory, and commit")
+    retag = commands.add_parser("retag", help="rewrite ARTIST/ALBUM/ALBUMARTIST tags to match Deezer "
+                                              "(no Jellyfin calls; rescan afterwards yourself)")
+    retag.add_argument("--dry-run", action="store_true")
     rollback = commands.add_parser("rollback", help="undo a live run, including Jellyfin-side changes")
     rollback.add_argument("manifest", help="manifest.json printed by the run")
     return parser
@@ -120,6 +127,8 @@ def main(argv: list[str] | None = None, deezer: DeezerClient | None = None,
             return import_playlists(ctx, args.dry_run, "import")
         if args.command == "export":
             return export(ctx)
+        if args.command == "retag":
+            return retag(ctx, args.dry_run)
         return rollback_run(ctx, Path(args.manifest))
     except JellyfinUnavailable as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -145,6 +154,14 @@ def execute(ctx: Context, plan: Plan, executor: Executor) -> None:
             ok = executor.to_trash(op.src)
         elif isinstance(op, Write):
             ok = executor.write(ctx.root / op.dst, op.data, replace=op.replace)
+        elif isinstance(op, Rewrite):
+            try:
+                data = b"" if executor.dry_run else write_tags(
+                    op.path, artists=op.artists, album=op.album, album_artists=op.album_artists)
+            except (OSError, ValueError) as exc:
+                plan.report.add("Failed actions", f"{op.path.name}: {exc}")
+                continue
+            ok = executor.rewrite(op.path, data)
         elif isinstance(op, RemoveDir):
             if not executor.remove_dir(ctx.root / op.path):
                 plan.report.add("Folders not removed (not empty)", op.path)
@@ -172,34 +189,46 @@ def _check_jellyfin_stopped(ctx: Context) -> bool:
     return True
 
 
-def record_history(ctx: Context, message: str) -> str:
-    """Inventory + playlist exports (when Jellyfin is reachable) + a commit in the library repo."""
+def record_history(ctx: Context, message: str, exports: bool = True) -> str:
+    """Inventory + playlist exports (when wanted and Jellyfin is reachable) + a library commit."""
     write_inventory(ctx.root, _scan(ctx, "inventory"))
-    jellyfin = ctx.jellyfin(required=False)
-    exported = "playlists not exported (Jellyfin not configured)"
-    if jellyfin is not None and jellyfin.scan_status() != "unreachable":
-        ctx.progress.note("Exporting Jellyfin playlists…")
-        count = export_playlists(ctx.root, jellyfin, jellyfin.get_user_id(load_settings(ctx.env_path).user))
-        exported = f"{count} playlists exported"
-    elif jellyfin is not None:
-        exported = "playlists not exported (Jellyfin not reachable; run `export` later)"
+    exported = ""
+    if exports:
+        jellyfin = ctx.jellyfin(required=False)
+        exported = "playlists not exported (Jellyfin not configured)"
+        if jellyfin is not None and jellyfin.scan_status() != "unreachable":
+            ctx.progress.note("Exporting Jellyfin playlists…")
+            count = export_playlists(ctx.root, jellyfin,
+                                     jellyfin.get_user_id(load_settings(ctx.env_path).user))
+            exported = f"{count} playlists exported"
+        elif jellyfin is not None:
+            exported = "playlists not exported (Jellyfin not reachable; run `export` later)"
     ctx.progress.note("Committing to the library git repo…")
     committed = commit(ctx.root, message)
-    return f"inventory written; {exported}; " + ("committed: " + message.splitlines()[0] if committed
-                                                  else "nothing new to commit")
+    parts = ["inventory written"] + ([exported] if exported else [])
+    parts.append("committed: " + message.splitlines()[0] if committed else "nothing new to commit")
+    return "; ".join(parts)
 
 
 def _finish(ctx: Context, report: Report, title: str, executor: Executor, message: str | None,
-            ok: bool = True) -> int:
+            ok: bool = True, exports: bool = True) -> int:
     manifest = executor.save()
     if message and ok and not executor.dry_run:
-        report.add("History", record_history(ctx, message))
+        report.add("History", record_history(ctx, message, exports))
     text = report.render(f"{title} [{'DRY RUN' if executor.dry_run else 'LIVE'}] {ctx.root}")
     print(text)
     print(f"Report: {ctx.save_report(text)}")
     if manifest:
         print(f"Manifest (for rollback): {manifest}")
     return 0 if ok else 1
+
+
+def _report_network_errors(ctx: Context, plan: Plan, fallback_note: str) -> None:
+    if isinstance(ctx._deezer, HttpDeezerClient) and ctx._deezer.network_errors:
+        errors = ctx._deezer.network_errors
+        line = f"{len(errors)} failed requests; first: {errors[0]}"
+        plan.report.add(f"Deezer network errors ({fallback_note}; re-run the dry run)", line)
+        print(f"warning: Deezer network errors: {line}", file=sys.stderr)
 
 
 def migrate_files(ctx: Context, dry_run: bool) -> int:
@@ -209,11 +238,7 @@ def migrate_files(ctx: Context, dry_run: bool) -> int:
         print(f"warning: {warning}", file=sys.stderr)
     songs = group_songs(_scan(ctx, "library"))
     plan = plan_files(ctx.root, songs, ctx.deezer(), ctx.deemix_settings, ctx.progress)
-    if isinstance(ctx._deezer, HttpDeezerClient) and ctx._deezer.network_errors:
-        errors = ctx._deezer.network_errors
-        line = f"{len(errors)} failed requests; first: {errors[0]}"
-        plan.report.add("Deezer network errors (those songs used the tag fallback; re-run the dry run)", line)
-        print(f"warning: Deezer network errors: {line}", file=sys.stderr)
+    _report_network_errors(ctx, plan, "those songs used the tag fallback")
     executor = ctx.executor("migrate-files", dry_run)
     try:
         execute(ctx, plan, executor)
@@ -246,6 +271,28 @@ def import_playlists(ctx: Context, dry_run: bool, command: str) -> int:
     if len(result.summary) > 1 or migrating:
         message += "\n\n" + "\n".join(result.summary)
     return _finish(ctx, result.report, command, executor, message, result.ok)
+
+
+def retag(ctx: Context, dry_run: bool) -> int:
+    files = _scan(ctx, "library")
+    plan = plan_retag(files, ctx.deezer(), ctx.progress)
+    _report_network_errors(ctx, plan, "those files used the folder/tag fallback")
+    executor = ctx.executor("retag", dry_run)
+    try:
+        execute(ctx, plan, executor)
+    finally:
+        executor.save()
+    ok = True
+    if not dry_run:
+        ok, message = retag_self_check(plan, executor)
+        plan.report.add("Self-check", message)
+    report = plan.report
+    rewritten = sum(isinstance(op, Rewrite) for op in plan.ops)
+    summary = (f"retag: {rewritten} files retagged; {len(report.lines(MISPLACED))} misplaced; "
+               f"{len(report.lines(COSMETIC))} cosmetic differences; "
+               f"{len(report.lines(LOOKUP_FAILED))} Deezer lookups failed")
+    report.add("Next step", "run a library scan in Jellyfin to pick up the new tags")
+    return _finish(ctx, report, "retag", executor, summary, ok, exports=False)
 
 
 def export(ctx: Context) -> int:

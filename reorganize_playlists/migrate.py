@@ -41,7 +41,16 @@ class RemoveDir:
     path: str
 
 
-Op = Move | Trash | Write | RemoveDir
+@dataclass(frozen=True)
+class Rewrite:
+    """Replace a file's bytes in place (computed at execute time); the original goes to the trash."""
+    path: Path
+    artists: list[str]
+    album: str
+    album_artists: list[str]
+
+
+Op = Move | Trash | Write | RemoveDir | Rewrite
 
 MOVES = "Moves"
 TRASHED = "Trashed duplicate copies"

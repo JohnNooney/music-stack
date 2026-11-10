@@ -7,7 +7,7 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -20,6 +20,7 @@ MACOS_CA_BUNDLE = "/etc/ssl/cert.pem"
 class DeezerTrack:
     id: str
     album_id: str
+    contributors: list[str] = field(default_factory=list)  # track artists, main artist first
 
 
 @dataclass(frozen=True)
@@ -62,14 +63,23 @@ class HttpDeezerClient:
 
     def lookup_track_by_isrc(self, isrc: str) -> DeezerTrack | None:
         key = f"track/isrc:{isrc}"
-        if key in self._cache:
-            return DeezerTrack(**self._cache[key]) if self._cache[key] else None
+        cached = self._cache.get(key, ...)
+        if cached is not ... and (cached is None or "contributors" in cached):
+            # Entries cached before contributors were stored miss the key and are refetched.
+            return DeezerTrack(**cached) if cached else None
         ok, data = self._get(key)
-        result = (DeezerTrack(id=str(data["id"]), album_id=str(data["album"]["id"]))
-                  if data and "album" in data else None)
+        result = self._track(data) if data and "album" in data else None
         if ok:
             self._store(key, asdict(result) if result else None)
         return result
+
+    @staticmethod
+    def _track(data: dict[str, Any]) -> DeezerTrack:
+        contributors = [c["name"] for c in data.get("contributors", []) if c.get("name")]
+        if not contributors and data.get("artist", {}).get("name"):
+            contributors = [data["artist"]["name"]]
+        return DeezerTrack(id=str(data["id"]), album_id=str(data["album"]["id"]),
+                           contributors=contributors)
 
     def get_album(self, album_id: str) -> DeezerAlbum | None:
         key = f"album/{album_id}"

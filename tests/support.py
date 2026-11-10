@@ -148,9 +148,11 @@ class FakeDeezer:
         self.calls: list[tuple[str, str]] = []
 
     def add(self, isrc: str, *, album: str, artist: str, track_total: int, disc_total: int = 1,
-            album_id: str | None = None, upc: str | None = None) -> None:
+            album_id: str | None = None, upc: str | None = None,
+            contributors: list[str] | None = None) -> None:
         album_id = album_id or f"alb-{album}-{artist}"
-        self.tracks[isrc] = DeezerTrack(id=f"trk-{isrc}", album_id=album_id)
+        self.tracks[isrc] = DeezerTrack(id=f"trk-{isrc}", album_id=album_id,
+                                        contributors=contributors if contributors is not None else [artist])
         info = DeezerAlbum(id=album_id, title=album, artist=artist,
                            track_total=track_total, disc_total=disc_total)
         self.albums[album_id] = info
