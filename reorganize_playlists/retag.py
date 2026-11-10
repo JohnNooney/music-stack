@@ -15,6 +15,15 @@ COSMETIC = "Cosmetic differences (not rewritten)"
 LOOKUP_FAILED = "Deezer lookup failed (folder fallback used / artist kept)"
 
 
+def _norm(value: str) -> str:
+    """Loose compare that also folds Deemix's `_` path replacer (`AC_DC` == `AC/DC`)."""
+    return normalise_words(value.replace("_", ""))
+
+
+def _norm_list(values: list[str]) -> list[str]:
+    return [_norm(v) for v in values]
+
+
 def _folder_parts(file: AudioFile) -> tuple[str, str] | None:
     """`(album artist, album)` parsed from the album folder name, when there is one."""
     if file.location is not Location.ALBUM:
@@ -27,8 +36,8 @@ def _misplaced(file: AudioFile, album: DeezerAlbum | None,
                folder: tuple[str, str] | None) -> bool:
     """Deezer and the `ALBUM` tag agree, but the album folder names a different album."""
     return (album is not None and folder is not None
-            and normalise_words(file.tags.album) == normalise_words(album.title)
-            and normalise_words(folder[1]) != normalise_words(album.title))
+            and _norm(file.tags.album) == _norm(album.title)
+            and _norm(folder[1]) != _norm(album.title))
 
 
 def _diffs(file: AudioFile, artists: list[str], album: str, album_artists: list[str]) -> list[str]:
@@ -47,10 +56,9 @@ def _diffs(file: AudioFile, artists: list[str], album: str, album_artists: list[
 def _substantive(file: AudioFile, artists: list[str], album: str, album_artists: list[str]) -> bool:
     """True when normalised values differ — case/punctuation-only differences are cosmetic."""
     tags = file.tags
-    return ([normalise_words(v) for v in tags.artists] != [normalise_words(v) for v in artists]
-            or normalise_words(tags.album) != normalise_words(album)
-            or [normalise_words(v) for v in tags.album_artists]
-            != [normalise_words(v) for v in album_artists])
+    return (_norm_list(tags.artists) != _norm_list(artists)
+            or _norm(tags.album) != _norm(album)
+            or _norm_list(tags.album_artists) != _norm_list(album_artists))
 
 
 def _resolve(file: AudioFile, deezer: DeezerClient) -> tuple[DeezerAlbum | None, DeezerTrack | None]:
@@ -82,7 +90,12 @@ def plan_retag(files: list[AudioFile], deezer: DeezerClient, progress: Progress)
         if album is not None:
             canon_album, canon_album_artists = album.title, [album.artist]
         elif folder is not None:
-            canon_album, canon_album_artists = folder[1], [folder[0]]
+            # Folder fallback: keep tag values that already agree with the folder — the tag's
+            # real character is better than the folder's mangled `_` (e.g. ':' for '_').
+            canon_album = tags.album if _norm(tags.album) == _norm(folder[1]) else folder[1]
+            canon_album_artists = (tags.album_artists
+                                   if _norm_list(tags.album_artists) == _norm_list([folder[0]])
+                                   else [folder[0]])
         else:
             canon_album, canon_album_artists = tags.album, tags.album_artists
         canon_artists = (list(track.contributors) if track and track.contributors

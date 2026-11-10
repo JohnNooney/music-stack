@@ -212,6 +212,29 @@ class RetagTest(ToolTestCase):
         failed = out.split("Deezer lookup failed")[1].split("\n\n")[0]
         self.assertIn("Ghost - Demo/02 - Rare.flac", failed)
 
+    def test_deemix_mangled_folder_name_is_not_misplaced(self) -> None:
+        path = self.lib.flac("Funkadelic - Who's a Funkadelic_/02 - You'll Like it Too.flac",
+                             title="You'll Like it Too", artist="Funkadelic",
+                             album="Who's a Funkadelic?", albumartist="Funkadelic", isrc="FNK1")
+        self.deezer.add("FNK1", album="Who's a Funkadelic?", artist="Funkadelic", track_total=12)
+        before = path.read_bytes()
+
+        out = self.run_tool("retag")
+
+        self.assertEqual(path.read_bytes(), before)
+        self.assertNotIn("Misplaced (", out)
+
+    def test_folder_fallback_keeps_unmangled_tag_values(self) -> None:
+        path = self.lib.flac("Tom Petty - Anthology_ Through The Years/01 - Song.flac",
+                             title="Song", artist="Tom Petty",
+                             album="Anthology: Through The Years", isrc="UNKNOWN9")
+
+        self.run_tool("retag")
+
+        tags = read_tags(path)
+        self.assertEqual(tags.album, "Anthology: Through The Years")  # not 'Anthology_ ...'
+        self.assertEqual(tags.album_artists, ["Tom Petty"])
+
     def test_second_run_on_a_clean_library_is_a_noop(self) -> None:
         path = self.lib.flac("Nas - Illmatic/05 - Halftime.flac", title="Halftime",
                              artist=["Nas", "Zashawn"], album="Illmatic", isrc="NAS5")
