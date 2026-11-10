@@ -11,9 +11,10 @@ import urllib.request
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol
 
 ScanStatus = Literal["unreachable", "idle", "scanning"]
+SCAN_START_GRACE = 30.0  # seconds to wait for a requested scan to show up as running
 
 
 class JellyfinUnavailable(Exception):
@@ -36,7 +37,9 @@ class PlaylistInfo:
 class JellyfinClient(Protocol):
     def scan_status(self) -> ScanStatus: ...
     def start_library_scan(self) -> None: ...
-    def wait_for_scan(self) -> None: ...
+    def wait_for_scan(self, on_progress: Callable[[float], None] | None = None) -> None:
+        """Block until the library scan has finished, reporting its percentage along the way."""
+        ...
     def find_items_by_paths(self, paths: list[str]) -> dict[str, str]:
         """Map library-relative paths to item ids; unknown paths are omitted."""
         ...
@@ -94,27 +97,40 @@ class HttpJellyfinClient:
         self._media_root = settings.media_root.rstrip("/") + "/"
         self._items: dict[str, str] | None = None
 
-    def scan_status(self) -> ScanStatus:
+    def _scan_task(self) -> dict[str, Any] | None:
+        """The RefreshLibrary scheduled task; None when Jellyfin is unreachable."""
         try:
             tasks = self._request("GET", "/ScheduledTasks", {"isHidden": "false"})
         except urllib.error.HTTPError as exc:
             raise JellyfinUnavailable(f"Jellyfin at {self._base} rejected the request (HTTP {exc.code}); "
                                       "check JELLYFIN_API_KEY in .env") from exc
         except (urllib.error.URLError, TimeoutError, ConnectionError):
+            return None
+        task: dict[str, Any] = next((t for t in tasks or [] if t.get("Key") == "RefreshLibrary"), {})
+        return task
+
+    def scan_status(self) -> ScanStatus:
+        task = self._scan_task()
+        if task is None:
             return "unreachable"
-        for task in tasks or []:
-            if task.get("Key") == "RefreshLibrary":
-                return "scanning" if task.get("State") != "Idle" else "idle"
-        return "idle"
+        return "scanning" if task.get("State", "Idle") != "Idle" else "idle"
 
     def start_library_scan(self) -> None:
         self._request("POST", "/Library/Refresh")
         self._items = None
 
-    def wait_for_scan(self) -> None:
-        time.sleep(2)
-        while self.scan_status() == "scanning":
-            time.sleep(5)
+    def wait_for_scan(self, on_progress: Callable[[float], None] | None = None) -> None:
+        started = time.monotonic()
+        seen_running = False
+        while True:
+            task = self._scan_task() or {}
+            if task.get("State", "Idle") != "Idle":
+                seen_running = True
+                if on_progress:
+                    on_progress(float(task.get("CurrentProgressPercentage") or 0))
+            elif seen_running or time.monotonic() - started > SCAN_START_GRACE:
+                break
+            time.sleep(2)
         self._items = None
 
     def find_items_by_paths(self, paths: list[str]) -> dict[str, str]:

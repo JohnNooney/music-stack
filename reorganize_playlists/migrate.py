@@ -13,6 +13,7 @@ from reorganize_playlists.library import (
     AudioFile, Location, Song, nfc, rel_key, song_key,
 )
 from reorganize_playlists.executor import Executor
+from reorganize_playlists.progress import Progress
 from reorganize_playlists.report import Report
 from reorganize_playlists.tags import read_art, read_tags
 
@@ -101,17 +102,20 @@ def _report_metadata(report: Report, file: AudioFile, album: DeezerAlbum | None)
                    f"{file.rel}: artist {tags.artist!r}, album artist {tags.album_artist!r}")
 
 
-def plan_files(root: Path, songs: list[Song], deezer: DeezerClient, settings: DeemixSettings) -> Plan:
+def plan_files(root: Path, songs: list[Song], deezer: DeezerClient, settings: DeemixSettings,
+               progress: Progress) -> Plan:
     plan = Plan()
     report = plan.report
     claimed: set[str] = set()
     covered: set[str] = set()
+    lookups = progress.counter("Deezer lookups", sum(s.canonical.location is not Location.ALBUM for s in songs))
 
     for song in sorted(songs, key=lambda s: s.canonical.rel):
         canonical = song.canonical
         if canonical.location is Location.ALBUM:
             final = canonical.rel
         else:
+            lookups.advance(canonical.rel)
             album = lookup_album(canonical, deezer)
             _report_metadata(report, canonical, album)
             target = deemix_path(track_meta(canonical, album), canonical.extension, settings)
@@ -157,6 +161,7 @@ def plan_files(root: Path, songs: list[Song], deezer: DeezerClient, settings: De
                     report.add("Sidecars adopted from a duplicate copy", f"{dup.rel} -> {final_stem}{ext}")
         plan.labels[final] = playlist_file.label(canonical.tags)
 
+    lookups.finish()
     _plan_root_playlists(root, plan)
     _plan_housekeeping(root, plan)
     return plan

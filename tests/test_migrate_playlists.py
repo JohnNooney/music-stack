@@ -54,6 +54,15 @@ class MigratePlaylistPhaseTest(ToolTestCase):
         self.assertEqual(self.jellyfin.scans_started, 1)
         self.assertEqual(len(self.jellyfin.playlists), 2)
 
+    def test_reports_progress_of_the_scan_and_each_playlist(self) -> None:
+        self.jellyfin.scan_progress = [12.5, 80.0]
+
+        out = self.run_tool("migrate", "--phase", "playlists")
+
+        self.assertIn("Jellyfin library scan", out)
+        self.assertIn("80%", out)
+        self.assertIn("Playlists 2/2", out)
+
     def test_refuses_when_songs_are_not_in_jellyfin(self) -> None:
         self.lib.write("Ghost.m3u", "#EXTM3U\nNowhere - Missing/01 - Song.flac\n")
 

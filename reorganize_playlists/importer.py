@@ -16,6 +16,7 @@ from reorganize_playlists.executor import Executor
 from reorganize_playlists.jellyfin import JellyfinClient
 from reorganize_playlists.library import nfc, rel_key
 from reorganize_playlists.migrate import ARTIFACT_NAMES, ARTIFACTS_DIR, root_playlist_files
+from reorganize_playlists.progress import Progress
 from reorganize_playlists.report import Report
 from reorganize_playlists.tags import read_tags
 
@@ -61,7 +62,7 @@ def _labels(root: Path, paths: list[str]) -> list[playlist_file.Entry]:
 
 
 def run_import(root: Path, jellyfin: JellyfinClient, user: str, executor: Executor,
-               strict: bool, take_root_artifacts: bool) -> ImportResult:
+               strict: bool, take_root_artifacts: bool, progress: Progress) -> ImportResult:
     """`strict`: refuse to touch anything if any entry is unknown to Jellyfin (migration playlist phase)."""
     result = ImportResult()
     report = result.report
@@ -73,8 +74,11 @@ def run_import(root: Path, jellyfin: JellyfinClient, user: str, executor: Execut
 
     if not dry_run:
         jellyfin.start_library_scan()
-        jellyfin.wait_for_scan()
+        scan = progress.percent("Jellyfin library scan")
+        jellyfin.wait_for_scan(scan.update)
+        scan.finish()
     user_id = jellyfin.get_user_id(user)
+    progress.note("Looking up playlist entries in Jellyfin…")
     mapping = load_map(root)
 
     lists = {nfc(p.stem): playlist_file.read(p, root) for p in playlists}
@@ -95,8 +99,10 @@ def run_import(root: Path, jellyfin: JellyfinClient, user: str, executor: Execut
             report.add("Root artifacts", f"several playlist files at the root; errors.txt/cover.jpg attributed "
                                          f"to the newest one, {artifact_owner}")
 
+    counter = progress.counter("Playlists", len(playlists))
     for playlist in playlists:
         name = nfc(playlist.stem)
+        counter.advance(name)
         entries = [e for e in lists[name] if e in ids]
         reference_path = root / IMPORTS_DIR / f"{name}.m3u8"
         previous = playlist_file.read(reference_path, root) if reference_path.exists() else []
@@ -156,4 +162,5 @@ def run_import(root: Path, jellyfin: JellyfinClient, user: str, executor: Execut
 
     executor.write(root / MAP_FILE, (json.dumps(mapping, indent=2, ensure_ascii=False, sort_keys=True)
                                      + "\n").encode("utf-8"), replace=True)
+    counter.finish()
     return result

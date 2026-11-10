@@ -354,6 +354,13 @@ class MigrateFilePhaseTest(ToolTestCase):
 
         self.assertTrue(self.lib.path("Nas - Illmatic/05 - Halftime.flac").is_file())
 
+    def test_reports_progress_of_deezer_lookups(self) -> None:
+        self.small_messy_library()
+
+        out = self.run_tool("migrate", "--dry-run")
+
+        self.assertIn("Deezer lookups 1/1", out)
+
     def test_live_run_self_checks_song_counts_and_trash(self) -> None:
         self.small_messy_library()
 

@@ -16,10 +16,11 @@ from reorganize_playlists.jellyfin import (
     HttpJellyfinClient, JellyfinClient, JellyfinUnavailable, load_settings, require_api_key,
 )
 from reorganize_playlists.importer import run_import
-from reorganize_playlists.library import group_songs, scan
+from reorganize_playlists.library import AudioFile, group_songs, scan
 from reorganize_playlists.migrate import (
     CONFLICTS, MOVES, TRASHED, Move, Plan, RemoveDir, Trash, Write, plan_files, self_check,
 )
+from reorganize_playlists.progress import Progress
 from reorganize_playlists.report import Report
 
 REPO = Path(__file__).resolve().parent.parent
@@ -34,6 +35,7 @@ class Context:
     env_path: Path
     deemix_settings: DeemixSettings
     run_id: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
+    progress: Progress = field(default_factory=Progress)
     _deezer: DeezerClient | None = None
     _jellyfin: JellyfinClient | None = None
 
@@ -127,8 +129,16 @@ def main(argv: list[str] | None = None, deezer: DeezerClient | None = None,
             ctx._deezer.flush()
 
 
+def _scan(ctx: Context, purpose: str) -> list[AudioFile]:
+    ctx.progress.note(f"Reading tags ({purpose})…")
+    return scan(ctx.root)
+
+
 def execute(ctx: Context, plan: Plan, executor: Executor) -> None:
+    applying = ctx.progress.counter("Applying changes", len(plan.ops)) if not executor.dry_run else None
     for op in plan.ops:
+        if applying:
+            applying.advance()
         if isinstance(op, Move):
             ok = executor.move(op.src, ctx.root / op.dst)
         elif isinstance(op, Trash):
@@ -141,6 +151,8 @@ def execute(ctx: Context, plan: Plan, executor: Executor) -> None:
             continue
         if not ok:
             plan.report.add("Failed actions", repr(op))
+    if applying:
+        applying.finish()
 
 
 def _check_jellyfin_stopped(ctx: Context) -> bool:
@@ -162,14 +174,16 @@ def _check_jellyfin_stopped(ctx: Context) -> bool:
 
 def record_history(ctx: Context, message: str) -> str:
     """Inventory + playlist exports (when Jellyfin is reachable) + a commit in the library repo."""
-    write_inventory(ctx.root, scan(ctx.root))
+    write_inventory(ctx.root, _scan(ctx, "inventory"))
     jellyfin = ctx.jellyfin(required=False)
     exported = "playlists not exported (Jellyfin not configured)"
     if jellyfin is not None and jellyfin.scan_status() != "unreachable":
+        ctx.progress.note("Exporting Jellyfin playlists…")
         count = export_playlists(ctx.root, jellyfin, jellyfin.get_user_id(load_settings(ctx.env_path).user))
         exported = f"{count} playlists exported"
     elif jellyfin is not None:
         exported = "playlists not exported (Jellyfin not reachable; run `export` later)"
+    ctx.progress.note("Committing to the library git repo…")
     committed = commit(ctx.root, message)
     return f"inventory written; {exported}; " + ("committed: " + message.splitlines()[0] if committed
                                                   else "nothing new to commit")
@@ -193,8 +207,8 @@ def migrate_files(ctx: Context, dry_run: bool) -> int:
         return 2
     for warning in ctx.deemix_settings.warnings():
         print(f"warning: {warning}", file=sys.stderr)
-    songs = group_songs(scan(ctx.root))
-    plan = plan_files(ctx.root, songs, ctx.deezer(), ctx.deemix_settings)
+    songs = group_songs(_scan(ctx, "library"))
+    plan = plan_files(ctx.root, songs, ctx.deezer(), ctx.deemix_settings, ctx.progress)
     if isinstance(ctx._deezer, HttpDeezerClient) and ctx._deezer.network_errors:
         errors = ctx._deezer.network_errors
         line = f"{len(errors)} failed requests; first: {errors[0]}"
@@ -207,7 +221,7 @@ def migrate_files(ctx: Context, dry_run: bool) -> int:
         executor.save()
     ok = True
     if not dry_run:
-        ok, message = self_check(songs, group_songs(scan(ctx.root)), plan, executor)
+        ok, message = self_check(songs, group_songs(_scan(ctx, "self-check")), plan, executor)
         plan.report.add("Self-check", message)
     report = plan.report
     summary = (f"migrate: {len(report.lines(MOVES))} songs into album folders; "
@@ -222,7 +236,7 @@ def import_playlists(ctx: Context, dry_run: bool, command: str) -> int:
     executor = ctx.executor(command, dry_run)
     try:
         result = run_import(ctx.root, jellyfin, load_settings(ctx.env_path).user, executor,
-                            strict=migrating, take_root_artifacts=not migrating)
+                            strict=migrating, take_root_artifacts=not migrating, progress=ctx.progress)
     finally:
         executor.save()
     if migrating:

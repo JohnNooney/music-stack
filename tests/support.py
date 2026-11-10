@@ -13,6 +13,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from reorganize_playlists.cli import main
 from reorganize_playlists.deezer import DeezerAlbum, DeezerTrack
@@ -186,6 +187,7 @@ class FakeJellyfin:
         self.playlists: dict[str, FakePlaylist] = {}
         self.mutations: list[str] = []
         self.scans_started = 0
+        self.scan_progress: list[float] = []
         self._scan_pending = False
         self._next = 0
 
@@ -230,7 +232,10 @@ class FakeJellyfin:
         self.scans_started += 1
         self._scan_pending = True
 
-    def wait_for_scan(self) -> None:
+    def wait_for_scan(self, on_progress: Callable[[float], None] | None = None) -> None:
+        for percent in self.scan_progress:
+            if on_progress:
+                on_progress(percent)
         if self._scan_pending:
             self.scan()
         self._scan_pending = False
