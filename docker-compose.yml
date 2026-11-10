@@ -1,6 +1,8 @@
 services:
   jellyfin:
-    image: jellyfin/jellyfin
+    # Pinned: album grouping (one folder = one album) and playlist behaviour the library layout relies on
+    # were verified against 12.4. Re-check docs/jellyfin-music-metadata-research.md before upgrading.
+    image: jellyfin/jellyfin:12.4
     container_name: jellyfin
     # Optional - specify the uid and gid you would like Jellyfin to use instead of root
     user: 501:501
@@ -20,3 +22,21 @@ services:
     # Optional - may be necessary for docker healthcheck to pass if running in host network mode
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+
+  deemix:
+    # Pinned: reorganize_playlists replicates this version's path generation (Deemix path).
+    # Re-check pathtemplates.ts before upgrading.
+    image: ghcr.io/bambanah/deemix:v4.8.0
+    container_name: deemix
+    environment:
+      - PUID=501
+      - PGID=501
+    ports:
+      - 6595:6595
+    volumes:
+      - type: bind
+        source: /Users/john/Music/Deemix
+        target: /downloads
+      # Config (credentials, queue, logs) lives in this repo, git-ignored, never in the scanned library.
+      - /Users/john/Docker/jellyfin/deemix-config:/config
+    restart: 'unless-stopped'

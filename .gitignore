@@ -1,5 +1,7 @@
 cache/
 config/
+# Deemix config: credentials, queue, logs (.env and __pycache__/ are covered below)
+deemix-config/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
