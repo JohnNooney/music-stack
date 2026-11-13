@@ -344,6 +344,27 @@ class UnionRootMaintenanceTest(UnionTestCase):
         self.assertEqual(self.entries(), {})
         self.assertIn("Pruned dangling links", out)
 
+    def test_non_disc_music_subfolder_is_reported(self) -> None:
+        vinyl = self.lidarr_album("Metallica", "St. Anger (2003)")
+        for sub in ("12 Vinyl 01", "12 Vinyl 02"):
+            (vinyl / sub).mkdir()
+            (vinyl / sub / "01 - Song.flac").write_bytes(b"x")
+        (self.deemix / "A - B" / "Bonus").mkdir(parents=True)
+        (self.deemix / "A - B" / "Bonus" / "01 - Extra.flac").write_bytes(b"x")
+        (self.deemix / "A - B" / "CD2").mkdir()
+        (self.deemix / "A - B" / "CD2" / "01 - Extra.flac").write_bytes(b"x")
+        (self.deemix / "A - B" / "Scans").mkdir()
+        (self.deemix / "A - B" / "Scans" / "cover.jpg").write_bytes(b"x")
+
+        out = self.run_tool()
+
+        section = out.split("Non-disc subfolders")[1].split("\n\n")[0]
+        self.assertIn("12 Vinyl 01", section)
+        self.assertIn("12 Vinyl 02", section)
+        self.assertIn("Deemix/A - B", section)
+        self.assertNotIn("CD2", section)
+        self.assertNotIn("Scans", section)
+
     def test_union_root_holds_only_symlinks_and_state(self) -> None:
         self.deemix_album("A - B")
         self.lidarr_album("C", "D (2001)")

@@ -18,7 +18,7 @@ python3 -m union_library             # apply it
 | `--exclude NAME` | — | extra Deemix root entries never mirrored (repeatable) |
 | `--dry-run` | off | report only, no filesystem changes |
 
-Each run prints a report (and saves it under `<union>/.union/runs/<run>/report.txt`) with, in order: **Linked (new)**, **Relinked (Deemix → Lidarr)**, **Ambiguous matches (kept Deemix)**, **Overridden**, **Loose-root items mirrored**, **Excluded**, **Foreign entries (untouched)**, **Pruned dangling links**, **Failed actions**, and a reminder to rescan. Re-running on an unchanged world produces an empty plan.
+Each run prints a report (and saves it under `<union>/.union/runs/<run>/report.txt`) with, in order: **Linked (new)**, **Relinked (Deemix → Lidarr)**, **Ambiguous matches (kept Deemix)**, **Overridden**, **Loose-root items mirrored**, **Excluded**, **Foreign entries (untouched)**, **Pruned dangling links**, **Non-disc subfolders (Jellyfin will split these)**, **Failed actions**, and a reminder to rescan. Re-running on an unchanged world produces an empty plan.
 
 ## How entries are chosen
 
@@ -27,6 +27,7 @@ Each run prints a report (and saves it under `<union>/.union/runs/<run>/report.t
 - **Lidarr-only albums** get constructed `<Artist> - <Album> (<Year>)` names. A name already taken in the union root is skipped and reported, never overwritten.
 - **Loose Deemix root items** (`.m3u8`, `.txt`, `.gitignore`, stray dirs) are mirrored verbatim. Tooling dirs (`Config`, `.git`, `.reorganize`, `.artifacts`, `.playlists`, `_duplicates_trash`, `Deemix-trash`) are excluded and reported.
 - **Pruning.** A union link whose target vanished is removed and reported. Entries the tool did not create are foreign: reported, untouched.
+- **Split-album detection.** Album folders whose audio lives in subfolders that aren't Jellyfin disc names (`cd`, `disc`, `disk`, `vol`, `volume`, `part`, `act` + number — `AlbumParser.IsMultiPart` at v12.4) get split into separate albums by the scanner, e.g. a `12 Vinyl 01`/`12 Vinyl 02` download. They are reported under *Non-disc subfolders*; fix them at the source by renaming to e.g. `CD 1`/`CD 2` (and let Lidarr rescan if the album is Lidarr-managed). The tool reports only — it never renames in a source tree.
 
 ## Overrides
 

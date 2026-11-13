@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from reorganize_playlists.library import nfc, normalise_words
+from reorganize_playlists.library import AUDIO_EXTS, nfc, normalise_words
 from reorganize_playlists.report import Report
 
 LINKED = "Linked (new)"
@@ -23,10 +23,12 @@ LOOSE = "Loose-root items mirrored"
 EXCLUDED = "Excluded"
 FOREIGN = "Foreign entries (untouched)"
 PRUNED = "Pruned dangling links"
+SPLIT = "Non-disc subfolders (Jellyfin will split these)"
 FAILED = "Failed actions"
 NEXT_STEP = "Next step"
 
-SECTION_ORDER = [LINKED, RELINKED, AMBIGUOUS, OVERRIDDEN, LOOSE, EXCLUDED, FOREIGN, PRUNED, FAILED]
+SECTION_ORDER = [LINKED, RELINKED, AMBIGUOUS, OVERRIDDEN, LOOSE, EXCLUDED, FOREIGN, PRUNED, SPLIT,
+                 FAILED]
 
 # Deemix root entries that are tooling, not library content, and must not be mirrored.
 DEFAULT_EXCLUDES = {"Config", "_duplicates_trash", "Deemix-trash",
@@ -34,6 +36,46 @@ DEFAULT_EXCLUDES = {"Config", "_duplicates_trash", "Deemix-trash",
 
 _YEAR = re.compile(r"\s*\(\d{4}\)\s*$")
 _DIRECTIVE = re.compile(r"^(match|prefer-deemix|keep-both)\s+(.+?)\s*=\s*([^/]+?)/(.+?)\s*$")
+
+# AlbumParser.IsMultiPart at v12.4 (Emby.Naming): basename cleaned of separators, a stacking
+# prefix, then a number. Subfolders with audio that fail this test become their own albums.
+_DISC_PREFIXES = ("cd", "digital media", "disc", "disk", "vol", "volume", "part", "act")
+_DISC_CLEAN = re.compile(r"[-.()\s]+")
+# Wider than the library's AUDIO_EXTS — downloads can arrive in any common audio format.
+_SPLIT_AUDIO_EXTS = AUDIO_EXTS | {".m4a", ".ogg", ".opus", ".wav", ".wma", ".aif", ".aiff"}
+
+
+def _is_disc_folder(name: str) -> bool:
+    cleaned = _DISC_CLEAN.sub(" ", name).lstrip()
+    lower = cleaned.casefold()
+    for prefix in _DISC_PREFIXES:
+        if lower.startswith(prefix):
+            first = cleaned[len(prefix):].strip().partition(" ")[0]
+            try:
+                int(first)
+                return True
+            except ValueError:
+                continue
+    return False
+
+
+def _non_disc_music_subdirs(album_dir: str) -> list[str]:
+    """Subfolders holding audio whose names aren't disc names — Jellyfin splits them off."""
+    bad: list[str] = []
+    try:
+        children = _scandir(Path(album_dir))
+    except OSError:
+        return bad
+    for child in children:
+        if not child.is_dir() or child.name.startswith(".") or _is_disc_folder(child.name):
+            continue
+        try:
+            if any(e.is_file() and Path(e.name).suffix.lower() in _SPLIT_AUDIO_EXTS
+                   for e in os.scandir(child.path)):
+                bad.append(nfc(child.name))
+        except OSError:
+            continue
+    return bad
 
 
 @dataclass(frozen=True)
@@ -155,9 +197,19 @@ def plan_union(union: Path, deemix: Path, lidarr: Path, directives: list[Directi
             deemix_albums[name] = key
         else:
             loose.append(name)
+        if entry.is_dir():
+            for bad in _non_disc_music_subdirs(entry.path):
+                lines[SPLIT].append(f"Deemix/{name}: '{bad}' holds audio but isn't a disc name "
+                                    f"(CD N / Disc N / Volume N) — Jellyfin shows it as a "
+                                    f"separate album; rename it at the source")
 
     # --- Lidarr tree: <Artist>/<Album (Year)> ---
     lidarr_albums = _scan_lidarr(lidarr)
+    for album in lidarr_albums:
+        for bad in _non_disc_music_subdirs(str(lidarr / album.artist / album.album)):
+            lines[SPLIT].append(f"Lidarr/{album.artist}/{album.album}: '{bad}' holds audio but "
+                                f"isn't a disc name (CD N / Disc N / Volume N) — Jellyfin shows "
+                                f"it as a separate album; rename it at the source")
     lidarr_by_name = {(a.artist, a.album): a for a in lidarr_albums}
 
     lidarr_by_key: dict[tuple[str, str], list[LidarrAlbum]] = {}
