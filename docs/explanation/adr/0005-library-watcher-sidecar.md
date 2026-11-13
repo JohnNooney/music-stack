@@ -1,6 +1,6 @@
 # ADR 0005: A compose sidecar polls the source trees and runs `migrate`, `union_library` and `import`
 
-**Status:** accepted (2026-11-13) · **Spec:** [0004](../specs/0004-library-watcher.md) · **Evidence:** [deemix-jellyfin-plugin-research.md](../deemix-jellyfin-plugin-research.md), [spec 0003](../specs/0003-union-library-for-deemix-and-lidarr.md)
+**Status:** accepted (2026-11-13) · **Spec:** [0004](../specs/0004-library-watcher.md) · **Evidence:** [deemix-jellyfin-plugin-research.md](../research/deemix-jellyfin-plugin-research.md), [spec 0003](../specs/0003-union-library-for-deemix-and-lidarr.md)
 
 ## Context
 

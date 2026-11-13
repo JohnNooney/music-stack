@@ -1,6 +1,6 @@
 # ADR 0004: A union root of relative symlinks is the only path Jellyfin scans
 
-**Status:** accepted (2026-11-13) · **Spec:** [0003](../specs/0003-union-library-for-deemix-and-lidarr.md) · **Evidence:** [jellyfin-multilibrary-dedup-research.md](../jellyfin-multilibrary-dedup-research.md)
+**Status:** accepted (2026-11-13) · **Spec:** [0003](../specs/0003-union-library-for-deemix-and-lidarr.md) · **Evidence:** [jellyfin-multilibrary-dedup-research.md](../research/jellyfin-multilibrary-dedup-research.md)
 
 ## Context
 
@@ -10,7 +10,7 @@ The same path-keyed IDs make the naive fix expensive: repointing the library at 
 
 ## Decision
 
-1. **The library is a union root**, `~/Music/Jellyfin/`, holding one entry per album — a **relative symlink** into whichever source tree holds the canonical copy (`../Deemix/<Album artist> - <Album>`, `../Lidarr/media/music/<Artist>/<Album> (<Year>)`), plus verbatim links for the Deemix root's loose items. `union_library` builds and maintains it; see [docs/union_library.md](../union_library.md).
+1. **The library is a union root**, `~/Music/Jellyfin/`, holding one entry per album — a **relative symlink** into whichever source tree holds the canonical copy (`../Deemix/<Album artist> - <Album>`, `../Lidarr/media/music/<Artist>/<Album> (<Year>)`), plus verbatim links for the Deemix root's loose items. `union_library` builds and maintains it; see [docs/union_library.md](../../reference/union_library.md).
 2. **The union mounts at `/media`**, the path Jellyfin already scans (`PathInfos` unchanged), and Deemix-sourced entries keep the Deemix folder's name **verbatim**. Every existing item keeps its exact path string and therefore its ID — no playlist/favourite/history loss. This works because Jellyfin keeps the *link* path as the item `Path` (`ManagedFileSystem` at v12.4). The source trees mount read-only at `/Deemix` and `/Lidarr` purely so the relative targets resolve inside the container too.
 3. **Lidarr wins on content, Deemix wins on naming.** When an album exists in both trees (normalised artist + album, trailing year stripped), the union entry keeps the Deemix name but links to the Lidarr copy — complete releases, MusicBrainz tags. Different releases (`Kill 'Em All (Remastered)` vs `Kill 'Em All (1983)`) never match. Multi-candidate matches are ambiguous: reported, Deemix kept, settled by a `union_library_overrides` directive.
 4. **The union only ever hides copies.** The tool's only filesystem effects are `symlink`/`unlink` inside the union root; neither source tree is moved, copied, retagged or deleted. Consolidating onto one tree (Option D in the research doc) remains a separate decision.

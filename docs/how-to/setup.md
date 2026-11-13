@@ -1,4 +1,4 @@
-# Runbook: initial setup
+# How to set up the stack
 
 From a fresh clone of this repo to a running stack: Deemix downloads, the
 Lidarr stack downloads, `union_library` merges both into the union root, and
@@ -56,8 +56,8 @@ here.
    immediately runs one `migrate` + `union_library` pass (see `docker logs
    library-watcher`), so the union root may already exist by step 7.
 
-6. **Wire the Lidarr stack** — follow [lidarr-stack.md](lidarr-stack.md)
-   steps 3–6:
+6. **Wire the Lidarr stack** — follow
+   [wire-lidarr-stack.md](wire-lidarr-stack.md):
    - Lidarr: root folder `/data/media/music`, copy the API key (Settings →
      General), add Transmission as download client, widen Metadata Profiles.
    - Prowlarr: add indexers, then Settings → Apps → Lidarr with that API key.
@@ -84,7 +84,7 @@ here.
 9. **Deemix** (http://localhost:6595): log in (Deezer ARL — saved to the
    git-ignored `deemix-config/login.json`). The tracked `config.json` already
    carries the required structure-playlist settings; don't change them (see
-   [README](../README.md#key-settings-and-why)).
+   [settings.md](../reference/settings.md)).
 
 10. **Smoke test.** Add one small artist in Lidarr, watch it flow through
     Soularr/slskd → `/data/media/music` → union root → Jellyfin (`docker logs
@@ -108,9 +108,11 @@ here.
 
 - Secrets never live in tracked files. `.env` and the app config dirs are
   git-ignored; only `*.example` templates are tracked. Full layout:
-  [lidarr-stack.md § Secrets](lidarr-stack.md#secrets-layout).
+  [lidarr-stack.md § Secrets](../reference/lidarr-stack.md#secrets-layout).
 - The arr services run as `${PUID}:${PGID}` (501:20 here);
   `jellyfin`/`deemix`/`library-watcher` stay on `501:501` — that difference is
   intentional.
-- Per-service detail, troubleshooting ("what failure looks like"), the VPN /
-  port-forwarding caveat: [lidarr-stack.md](lidarr-stack.md).
+- Per-service detail: [wire-lidarr-stack.md](wire-lidarr-stack.md).
+  Troubleshooting ("what failure looks like"): [add-music.md](add-music.md).
+  The VPN / port-forwarding caveat and other service notes:
+  [lidarr-stack.md](../reference/lidarr-stack.md).

@@ -1,6 +1,6 @@
 # reorganize_playlists
 
-A command-line tool that keeps the Deemix library in album folders and keeps the Jellyfin playlists in step with it. It uses only the Python standard library (Python ≥ 3.11). Terms follow [CONTEXT.md](../CONTEXT.md).
+A command-line tool that keeps the Deemix library in album folders and keeps the Jellyfin playlists in step with it. It uses only the Python standard library (Python ≥ 3.11). Terms follow [CONTEXT.md](../../CONTEXT.md).
 
 ```bash
 cd /Users/john/Docker/jellyfin

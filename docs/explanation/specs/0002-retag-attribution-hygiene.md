@@ -3,7 +3,7 @@
 **Status:** ready-for-agent
 **Labels:** `ready-for-agent`
 **Glossary:** use the terms defined in `CONTEXT.md` at the repo root (album folder, pseudo-album, song, canonical copy, duplicate copy, playlist, playlist file, playlist artifacts, migration, Deemix path, trash, inventory).
-**Prior spec:** `docs/specs/0001-album-folder-migration-and-jellyfin-playlists.md` (the migration this follows up).
+**Prior spec:** `docs/explanation/specs/0001-album-folder-migration-and-jellyfin-playlists.md` (the migration this follows up).
 
 ## Problem Statement
 

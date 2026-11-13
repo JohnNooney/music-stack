@@ -3,7 +3,7 @@
 **Status:** ready-for-agent
 **Labels:** `ready-for-agent`
 **Glossary:** use the terms defined in `CONTEXT.md` at the repo root (album folder, pseudo-album, song, canonical copy, duplicate copy, playlist, playlist file, playlist import, playlist export, legacy playlist folder, playlist artifacts, migration, Deemix path, trash, inventory).
-**Background research:** `docs/jellyfin-music-metadata-research.md` (why Jellyfin turns each legacy playlist folder into a pseudo-album).
+**Background research:** `docs/explanation/research/jellyfin-music-metadata-research.md` (why Jellyfin turns each legacy playlist folder into a pseudo-album).
 
 ## Problem Statement
 
@@ -171,8 +171,8 @@ A single new Python command-line tool (working name `reorganize_playlists`), sta
 ### Documentation
 - `README.md` becomes the stack overview.
 - `CONTEXT.md` glossary already exists; update it if new terms crystallise.
-- `docs/adr/` with three ADRs: (1) songs live only in album folders and Jellyfin owns playlists (chosen over `.ignore`-ing the playlist folder, which would hide the songs, and over file-owned playlists, which Jellyfin won't let the user edit); (2) Deemix structure-playlist mode with migrated songs at their exact Deemix path via Deezer lookup; (3) no git for audio — APFS clone backup + text-only git.
-- `docs/reorganize_playlists.md` (usage), `docs/runbook-migration.md` (step order + done checklist), `docs/dedup_music.md` (current README content, marked retired), research doc gets a pointer to the ADRs.
+- `docs/explanation/adr/` with three ADRs: (1) songs live only in album folders and Jellyfin owns playlists (chosen over `.ignore`-ing the playlist folder, which would hide the songs, and over file-owned playlists, which Jellyfin won't let the user edit); (2) Deemix structure-playlist mode with migrated songs at their exact Deemix path via Deezer lookup; (3) no git for audio — APFS clone backup + text-only git.
+- `docs/reference/reorganize_playlists.md` (usage), `docs/how-to/migrate-library.md` (step order + done checklist), `docs/explanation/dedup_music.md` (current README content, marked retired), research doc gets a pointer to the ADRs.
 - `dedup_music.py` removed from the repo.
 
 ## Testing Decisions

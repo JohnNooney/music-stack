@@ -1,6 +1,17 @@
 # Home music stack
 
-Deemix downloads music into one library on disk and the Lidarr stack into another. `union_library` merges them into a single deduplicated union root of symlinks that Jellyfin serves, laid out so every song can be browsed by its real artist and album. Playlists are Jellyfin playlists you edit in the Jellyfin UI. A `library-watcher` sidecar polls the source trees and runs the migrate → union → import pipeline automatically when they change ([ADR 0005](docs/adr/0005-library-watcher-sidecar.md)). Vocabulary: [CONTEXT.md](CONTEXT.md).
+Deemix downloads music into one library on disk and the Lidarr stack into another. `union_library` merges them into a single deduplicated union root of symlinks that Jellyfin serves, laid out so every song can be browsed by its real artist and album. Playlists are Jellyfin playlists you edit in the Jellyfin UI. A `library-watcher` sidecar polls the source trees and runs the migrate → union → import pipeline automatically when they change ([ADR 0005](docs/explanation/adr/0005-library-watcher-sidecar.md)). Vocabulary: [CONTEXT.md](CONTEXT.md).
+
+```mermaid
+flowchart TD
+    D["Deemix<br>Deezer downloads"] --> DL["~/Music/Deemix<br>library root"]
+    LS["Lidarr stack<br>Lidarr · Prowlarr · Soularr · Slskd · Transmission"] --> LL["~/Music/Lidarr/media/music"]
+    DL -- "migrate: dedup and place" --> U
+    LL --> U["union_library"]
+    U -- "one symlink per album" --> UR["~/Music/Jellyfin<br>union root"]
+    UR -- "the only directory scanned" --> J["Jellyfin"]
+    W["library-watcher"] -. "on change: migrate → union → import" .-> U
+```
 
 ## Services (`docker-compose.yml`)
 
@@ -16,7 +27,7 @@ Deemix downloads music into one library on disk and the Lidarr stack into anothe
 | `slskd` | `slskd/slskd` | 5030 (web), 5031 (https), 50300 (slsk listen) | `./slskd` → `/app`, `${DATA_DIR}/slskd/{downloads,incomplete}`, `${DATA_DIR}/media` → `/data:ro`, `~/Music/Deemix` → `/deemix:ro` |
 | `transmission` | `lscr.io/linuxserver/transmission:latest` | 9091 (web), 51413 (t/u peer) | `./transmission` → `/config`, `${DATA_DIR}/torrents` → `/data/torrents` |
 
-`jellyfin`/`deemix`/`library-watcher` run as uid/gid 501; the Lidarr stack runs as `PUID`/`PGID` from `.env` (501:20 on this host — FlareSolverr ignores them, its image uses a fixed user). `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/lidarr-stack.md](docs/lidarr-stack.md#secrets-layout)).
+`jellyfin`/`deemix`/`library-watcher` run as uid/gid 501; the Lidarr stack runs as `PUID`/`PGID` from `.env` (501:20 on this host — FlareSolverr ignores them, its image uses a fixed user). `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/reference/lidarr-stack.md](docs/reference/lidarr-stack.md#secrets-layout)).
 
 ```bash
 docker compose up -d                  # start everything (or name services to start a subset)
@@ -24,60 +35,42 @@ docker compose stop jellyfin          # e.g. before moving files
 docker compose logs -f deemix
 ```
 
-Lidarr-stack usage and setup: [docs/lidarr-stack.md](docs/lidarr-stack.md).
+## Tools
 
-## Library layout rules (`/Users/john/Music/Deemix`)
+Three stdlib-only Python packages live in this repo; run them from the repo root.
 
-- **One folder = one album.** Every song lives in an album folder `<Album artist> - <Album>/` at the library root. Multi-disc albums get `CD<n>/` subfolders. Jellyfin makes an album out of every folder that holds audio, so nothing else may hold audio. ([ADR 0001](docs/adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md))
-- **Exact Deemix paths.** Files are named exactly as Deemix names them (`<NN> - <Title>.<ext>`), so Deemix recognises songs it already has. ([ADR 0002](docs/adr/0002-deemix-structure-playlist-mode-and-exact-deemix-paths.md))
-- **Each song is stored once.** Duplicate copies go to `~/Music/Deemix-trash/`, which is never deleted automatically.
-- **Playlists live in Jellyfin.** Playlist files appear at the root only briefly, after a Deemix download, until `import` moves them out.
-- **Hidden data is dot-prefixed** so Jellyfin ignores it: `.playlists/` (exports, import references, `map.json`), `.artifacts/<playlist>/` (errors.txt, cover), `.inventory.tsv`, `.reorganize/` (tool state), and a text-only `.git`. ([ADR 0003](docs/adr/0003-no-git-for-audio-apfs-clone-and-text-only-git.md))
+| Tool | Command | What it does |
+|---|---|---|
+| `reorganize_playlists` | `python3 -m reorganize_playlists <cmd>` | `migrate` dedups/places loose tracks, `import` merges Deemix `.m3u8`s into Jellyfin playlists, `export`, `retag`, `rollback` |
+| `union_library` | `python3 -m union_library` | Rebuilds the union root's symlinks to match the source trees |
+| `library_watcher` | runs as the `library-watcher` service | Polls the source trees and runs migrate → union → import on change |
 
 ## Workflow: download → import
 
-1. Open Deemix at http://localhost:6595 and download playlists. Tracks land straight in album folders, and one `<Playlist>.m3u8` is written at the library root.
+1. Open Deemix at http://localhost:6595 and download playlists (or add an artist in Lidarr — see [add-music](docs/how-to/add-music.md)). Tracks land straight in album folders, and one `<Playlist>.m3u8` is written at the library root.
 2. `library-watcher` takes it from there: once the source trees settle it runs `migrate` (dedups and places loose tracks) → `union_library` (refreshes the union root) → `import`. To run the import by hand instead:
    ```bash
    python3 -m reorganize_playlists import
    ```
    It scans Jellyfin and waits for the scan to finish. It appends songs that are new on Deezer to the matching Jellyfin playlist without undoing your edits, and reports songs Deezer dropped. It archives `errors.txt`/`cover.jpg` and uploads the cover, moves the playlist file out of the library, exports all playlists and the inventory, and commits to the library's git repo (never pushed).
 
-Setup: `cp .env.example .env` and set `JELLYFIN_API_KEY` (Jellyfin → Dashboard → API Keys). Full tool reference: [docs/reorganize_playlists.md](docs/reorganize_playlists.md). The one-off migration from the old `Playlists/<Name>/` layout: [docs/runbook-migration.md](docs/runbook-migration.md).
+## Documentation
 
-## Key settings and why
+The docs follow the [Diátaxis](https://diataxis.fr/) framework — see [docs/README.md](docs/README.md) for the full map.
 
-| Where | Setting | Why |
-|---|---|---|
-| Deemix | `createStructurePlaylist: true`, `createPlaylistFolder: false` | Playlist tracks go into album folders. Both are required: with the playlist folder on, tracks land in `Playlists/<Name>/Artist - Album/`. |
-| Deemix | `playlistTracknameTemplate: "%tracknumber% - %title%"` | Deemix uses the playlist template for playlist tracks even in structure mode, so it must match `albumTracknameTemplate`. |
-| Deemix | `createM3U8File: true`, `playlistFilenameTemplate: "%title%"` | Writes `<Title>.m3u8` at the root, with paths relative to the root, for `import`. |
-| Deemix | `overwriteFile: 'l'`, `albumNameTemplate: "%artist% - %album%"`, `illegalCharacterReplacer: "_"`, padding | Unchanged. The migration reproduces paths from these, so changing them breaks skip-if-exists. |
-| Jellyfin | MusicBrainz enabled for albums/artists | Kept. After bulk moves, run *Refresh metadata → Replace all metadata*, because ordinary rescans keep stale album/artist values. |
-| Jellyfin | Custom tag delimiters off | Out of scope. Combined artist tags such as `Mack 10/Ice Cube` stay as one artist. |
+| Quadrant | Contents |
+|---|---|
+| **How-to** ([docs/how-to/](docs/how-to/)) | [Setup](docs/how-to/setup.md), [wiring the Lidarr stack](docs/how-to/wire-lidarr-stack.md), [adding music](docs/how-to/add-music.md), the [union-root cutover](docs/how-to/cut-over-union-root.md), the [one-off migration](docs/how-to/migrate-library.md), [upgrading pinned images](docs/how-to/upgrade-images.md) |
+| **Reference** ([docs/reference/](docs/reference/)) | [Library layout rules](docs/reference/library-layout.md), [key settings](docs/reference/settings.md), [`reorganize_playlists`](docs/reference/reorganize_playlists.md), [`union_library`](docs/reference/union_library.md), [Lidarr stack](docs/reference/lidarr-stack.md), [CONTEXT.md](CONTEXT.md) |
+| **Explanation** ([docs/explanation/](docs/explanation/)) | [Architecture](docs/explanation/architecture.md), [ADRs](docs/explanation/adr/), [specs](docs/explanation/specs/), [research notes](docs/explanation/research/), [retired `dedup_music`](docs/explanation/dedup_music.md) |
+| **Tutorials** | none yet — [setup](docs/how-to/setup.md) is the closest to a first-run walkthrough |
 
-The original Deemix config is kept as `deemix-config/config.json.before-structure-playlist`.
+## Developing
 
-## Upgrading the pinned images
+```bash
+python3 -m unittest                         # full suite
+python3 -m unittest tests.test_import       # one file
+.venv/bin/mypy                              # strict typecheck (python3 -m venv .venv && .venv/bin/pip install mypy)
+```
 
-The library layout depends on Jellyfin's folder→album rules and on Deemix's path generation, so never use `latest`.
-
-- **Deemix:** compare `packages/deemix/src/utils/pathtemplates.ts` (and `types/Album.ts` for `discTotal`) between the pinned tag and the new one against `reorganize_playlists/deemix.py`. Bump the tag in `docker-compose.yml`, then `docker compose pull deemix && docker compose up -d deemix`, and re-download one small owned playlist to confirm nothing is downloaded again.
-- **Jellyfin:** check the release notes for changes to music library resolution (`MusicAlbumResolver`, `MusicArtistResolver`), playlist ownership and `.ignore`/dot-file handling (see [the research](docs/jellyfin-music-metadata-research.md)). Bump the tag, then pull, `up -d`, and spot-check an artist page and a playlist edit.
-
-## Docs
-
-- [docs/runbook-setup.md](docs/runbook-setup.md): initial setup from a fresh clone, end to end
-- [docs/union_library.md](docs/union_library.md): union root tool usage and the cutover runbook
-- [docs/specs/0004-library-watcher.md](docs/specs/0004-library-watcher.md): the `library-watcher` sidecar spec ([ADR 0005](docs/adr/0005-library-watcher-sidecar.md))
-- [docs/lidarr-stack.md](docs/lidarr-stack.md): Lidarr/Prowlarr/Soularr/Slskd/Transmission services, secrets layout, setup
-- [docs/reorganize_playlists.md](docs/reorganize_playlists.md): tool usage
-- [docs/runbook-migration.md](docs/runbook-migration.md): one-off migration, with the done checklist
-- [docs/adr/](docs/adr/): decisions you should not undo without reading them first
-- [docs/jellyfin-music-metadata-research.md](docs/jellyfin-music-metadata-research.md): why Jellyfin made pseudo-albums
-- [docs/jellyfin-multilibrary-dedup-research.md](docs/jellyfin-multilibrary-dedup-research.md): why a symlink union instead of multiple Jellyfin libraries
-- [docs/deemix-jellyfin-plugin-research.md](docs/deemix-jellyfin-plugin-research.md): the trigger options (WebSocket, launchd, polling) the watcher chose between
-- [docs/flaresolverr-research.md](docs/flaresolverr-research.md): FlareSolverr vs Byparr for Cloudflare-blocked Prowlarr indexers
-- [docs/lidarr-stack-merge-research.md](docs/lidarr-stack-merge-research.md): how the Lidarr stack was merged into this repo without leaking secrets
-- [docs/specs/](docs/specs/): specs
-- [docs/dedup_music.md](docs/dedup_music.md): the retired `dedup_music.py`
+Tools are stdlib-only; keep them that way. Test through the `main(argv, fakes)` seams described in [AGENTS.md](AGENTS.md).

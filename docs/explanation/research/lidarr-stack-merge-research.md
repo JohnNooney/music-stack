@@ -241,7 +241,7 @@ Publishable templates:
   generates it with its own ApiKey.
 
 README: port `lidarr-stack/README.md` §Setup steps 3–7 into this repo's README (or
-`docs/lidarr-stack.md`), updating paths (`../lidarr-stack` → same repo) and noting the
+`docs/reference/lidarr-stack.md`), updating paths (`../lidarr-stack` → same repo) and noting the
 `config.ini` copy step.
 
 ## 8. Git-history risk assessment
@@ -276,7 +276,7 @@ README: port `lidarr-stack/README.md` §Setup steps 3–7 into this repo's READM
 ## Sources
 
 - This repo: `docker-compose.yml`, `.env`, `.env.example`, `.gitignore`, `deemix-config/`,
-  `config/`, `README.md`, `docs/adr/0004-…`, `docs/specs/0003-…` — all `file:line` cites above.
+  `config/`, `README.md`, `docs/explanation/adr/0004-…`, `docs/explanation/specs/0003-…` — all `file:line` cites above.
 - `lidarr-stack/`: `docker-compose.yaml`, `.gitignore`, `soularr/config.ini`,
   `lidarr/config.xml`, `prowlarr/config.xml`, `slskd/slskd.yml`,
   `transmission/settings.json`, `README.md` + `git log --all -p` — `file:line` cites above.

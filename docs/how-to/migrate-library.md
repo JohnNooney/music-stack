@@ -1,6 +1,6 @@
-# Runbook: one-off album-folder migration
+# How to run the one-off album-folder migration
 
-Moves every song out of the legacy playlist folders into album folders and recreates the playlists as Jellyfin playlists owned by you. Background: [ADR 0001](adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md), [ADR 0002](adr/0002-deemix-structure-playlist-mode-and-exact-deemix-paths.md), [ADR 0003](adr/0003-no-git-for-audio-apfs-clone-and-text-only-git.md). Tool usage: [reorganize_playlists.md](reorganize_playlists.md).
+Moves every song out of the legacy playlist folders into album folders and recreates the playlists as Jellyfin playlists owned by you. Background: [ADR 0001](../explanation/adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md), [ADR 0002](../explanation/adr/0002-deemix-structure-playlist-mode-and-exact-deemix-paths.md), [ADR 0003](../explanation/adr/0003-no-git-for-audio-apfs-clone-and-text-only-git.md). Tool usage: [reorganize_playlists.md](../reference/reorganize_playlists.md).
 
 Run every command from `/Users/john/Docker/jellyfin`. Do the steps **in order**.
 

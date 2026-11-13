@@ -284,4 +284,4 @@ same API, same port; can't run both on host port 8191 without remapping, e.g.
 - Servarr wiki: https://wiki.servarr.com/prowlarr/settings (Indexer Proxies)
 - Prowlarr issue (indexer removal / FlareSolverr ecosystem comment):
   https://github.com/Prowlarr/Prowlarr/issues/2358
-- This repo: `docker-compose.yml` (conventions), `docs/lidarr-stack.md`.
+- This repo: `docker-compose.yml` (conventions), `docs/reference/lidarr-stack.md`.

@@ -1,4 +1,4 @@
-> **Retired.** `dedup_music.py` was replaced by `reorganize_playlists` (see [reorganize_playlists.md](reorganize_playlists.md) and [ADR 0001](adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md)). Songs no longer live in `Playlists/<Name>/` folders and playlists are owned by Jellyfin, so this script would now write playlists in a conflicting way. It was removed from the repo; its library copy, log and run manifests were moved to `/Users/john/Music/Deemix-trash/retire-dedup_music/`. This page is kept for history only.
+> **Retired.** `dedup_music.py` was replaced by `reorganize_playlists` (see [reorganize_playlists.md](../reference/reorganize_playlists.md) and [ADR 0001](adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md)). Songs no longer live in `Playlists/<Name>/` folders and playlists are owned by Jellyfin, so this script would now write playlists in a conflicting way. It was removed from the repo; its library copy, log and run manifests were moved to `/Users/john/Music/Deemix-trash/retire-dedup_music/`. This page is kept for history only.
 
 # dedup_music.py
 

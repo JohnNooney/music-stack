@@ -8,7 +8,7 @@
 - **Union entry**: one top-level entry inside the union root — a symlink to an album folder in either source tree, or to a loose root item from the Deemix library root.
 - **Source tree**: either `~/Music/Deemix` (the existing library root, flat `<Album artist> - <Album>` album folders) or `~/Music/Lidarr/media/music` (Lidarr's root, `<Artist>/<Album> (<Year>)`).
 
-**Evidence:** `docs/jellyfin-multilibrary-dedup-research.md` — Jellyfin keys every item as `MD5(type + path)` (verified at `v12.4`), so identical files at two scanned paths always appear twice; no dedupe, no audio merge-versions feature. The union root is the agreed remedy ("Option C" in §5C of that document).
+**Evidence:** `docs/explanation/research/jellyfin-multilibrary-dedup-research.md` — Jellyfin keys every item as `MD5(type + path)` (verified at `v12.4`), so identical files at two scanned paths always appear twice; no dedupe, no audio merge-versions feature. The union root is the agreed remedy ("Option C" in §5C of that document).
 
 ## Problem Statement
 

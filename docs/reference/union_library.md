@@ -1,8 +1,10 @@
 # union_library
 
-`union_library` builds and maintains the **union root** `~/Music/Jellyfin/` — one relative symlink per album pointing into whichever source tree holds the canonical copy — the only directory Jellyfin scans. Deemix-sourced entries keep the Deemix album folder's name verbatim, so every existing Jellyfin item keeps its path and its ID ([ADR 0004](adr/0004-union-library-over-deemix-and-lidarr.md)).
+`union_library` builds and maintains the **union root** `~/Music/Jellyfin/` — one relative symlink per album pointing into whichever source tree holds the canonical copy — the only directory Jellyfin scans. Deemix-sourced entries keep the Deemix album folder's name verbatim, so every existing Jellyfin item keeps its path and its ID ([ADR 0004](../explanation/adr/0004-union-library-over-deemix-and-lidarr.md)).
 
 Stdlib-only, no API calls; the only filesystem effects are `symlink`/`unlink` inside the union root. Neither source tree is ever modified.
+
+**Tasks:** [cut Jellyfin over to the union root](../how-to/cut-over-union-root.md).
 
 ```bash
 python3 -m union_library --dry-run   # show the whole plan first
@@ -40,15 +42,6 @@ keep-both <deemix-name> = <lidarr-artist>/<lidarr-album>
 ```
 
 `match` forces the dedupe (Lidarr target), `prefer-deemix` forces the match but keeps the Deemix copy, `keep-both` suppresses the dedupe and emits both entries. Names are literal folder names; directives that name nothing on disk are reported as unused, and malformed lines abort the run.
-
-## First cutover runbook
-
-The point of the exercise is that Jellyfin item IDs survive (`MD5(type + path)`; Deemix names kept verbatim at the same `/media` mount). Prove it once:
-
-1. `python3 -m union_library --dry-run` — read the plan, then `python3 -m union_library`.
-2. `docker compose up -d jellyfin` with the new mounts (`~/Music/Jellyfin` → `/media`, `~/Music/Deemix` → `/Deemix:ro`, `~/Music/Lidarr` → `/Lidarr:ro`).
-3. Trigger a library scan (Dashboard → Libraries → Scan).
-4. Confirm: (a) album/song counts are unchanged apart from the new Lidarr-only albums, (b) `Head Hunters`, `Tiempo pa' matar` and `The Mouse & The Man` each appear once, (c) a few playlists still resolve their entries. If IDs were somehow lost, everything still works — it is one clean rescan, not a corruption.
 
 ## Routine use
 

@@ -4,7 +4,7 @@ Research date: 2026-11-13. Server source inspected at `jellyfin/jellyfin` tag
 [`v12.4`](https://github.com/jellyfin/jellyfin/releases/tag/v12.4) (commit
 [`83d0d0e`](https://github.com/jellyfin/jellyfin/commit/83d0d0e7f76e23e2e085c8ff67d28b772d35967d)),
 the release behind the pinned `jellyfin/jellyfin:12.4` image in
-[`docker-compose.yml`](../docker-compose.yml) (§7). Question context: adding the Lidarr tree
+[`docker-compose.yml`](../../../docker-compose.yml) (§7). Question context: adding the Lidarr tree
 (`/Users/john/Music/Lidarr/media/music`, layout `Artist/Album (Year)`) to a Jellyfin server that
 already scans `/Users/john/Music/Deemix` (flat `Artist - Album/` album folders) — ~8 overlapping
 artists, at least 3 identically-named albums plus Metallica edition differences.

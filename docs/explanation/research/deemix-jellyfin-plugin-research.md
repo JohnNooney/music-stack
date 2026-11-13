@@ -163,7 +163,7 @@ The tool's contract is "after a Deemix session, scan then import". Options for a
 
 `/media` inside the container is sufficient for all of this — it is the same bind-mounted library
 root the Python tool sees as `~/Music/Deemix`
-([`docker-compose.yml`](../docker-compose.yml)).
+([`docker-compose.yml`](../../../docker-compose.yml)).
 
 ## 4. The Deemix side
 

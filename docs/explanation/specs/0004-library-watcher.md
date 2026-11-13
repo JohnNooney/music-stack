@@ -10,7 +10,7 @@
 - **Trigger set**: the input that justifies a job — the source-tree fingerprint for `union_library`, the Deemix-root `*.m3u8` name+mtime set for `import`. Its hash is what retry suppression remembers.
 
 **Prior spec:** [0003](0003-union-library-for-deemix-and-lidarr.md) — this spec claims its deferred items "Scheduling/automation" and (partially) "Realtime Jellyfin refresh".
-**Background research:** `docs/deemix-jellyfin-plugin-research.md` — enumerates the trigger options (Deemix WebSocket `finishDownload`/queue-empty, launchd `WatchPaths`, polling) and documents that Docker Desktop file-event propagation into containers is unreliable.
+**Background research:** `docs/explanation/research/deemix-jellyfin-plugin-research.md` — enumerates the trigger options (Deemix WebSocket `finishDownload`/queue-empty, launchd `WatchPaths`, polling) and documents that Docker Desktop file-event propagation into containers is unreliable.
 
 ## Problem Statement
 

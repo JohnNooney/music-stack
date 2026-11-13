@@ -4,7 +4,7 @@
 
 ## Context
 
-Jellyfin builds albums purely from folders: any folder that directly contains audio is one `MusicAlbum`. It is named after the first track's `ALBUM` tag and linked to the union of every track's album artists (see the [research](../jellyfin-music-metadata-research.md)). So each legacy playlist folder (`Playlists/<Name>/`) became a pseudo-album that appeared on dozens of artist pages, and `Playlists/` itself became an artist. Correct tags cannot fix this.
+Jellyfin builds albums purely from folders: any folder that directly contains audio is one `MusicAlbum`. It is named after the first track's `ALBUM` tag and linked to the union of every track's album artists (see the [research](../research/jellyfin-music-metadata-research.md)). So each legacy playlist folder (`Playlists/<Name>/`) became a pseudo-album that appeared on dozens of artist pages, and `Playlists/` itself became an artist. Correct tags cannot fix this.
 
 Playlists imported from `.m3u` files have no owner in Jellyfin. They can be played but not edited (every edit returns 403).
 

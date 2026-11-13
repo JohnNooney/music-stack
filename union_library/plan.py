@@ -1,7 +1,7 @@
 """Plan the union root: one relative symlink per album across the Deemix and Lidarr trees.
 
 Entry names that exist in the Deemix tree are kept verbatim — Jellyfin item IDs are
-MD5(type + path), so the path string is the item's identity (see docs/specs/0003).
+MD5(type + path), so the path string is the item's identity (see docs/explanation/specs/0003).
 """
 
 from __future__ import annotations

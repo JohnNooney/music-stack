@@ -1,10 +1,10 @@
 # Why Jellyfin attributes an entire `Playlists/` folder to a single album/artist
 
-> **Decisions taken from this research:** see the ADRs in [`docs/adr/`](adr/). The `.ignore` fix
+> **Decisions taken from this research:** see the ADRs in [`docs/explanation/adr/`](../adr/). The `.ignore` fix
 > recommended in §10 was **rejected** because it hides the songs. Instead, songs moved into album folders
-> and Jellyfin owns the playlists ([ADR 0001](adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md)),
-> at their exact Deemix paths ([ADR 0002](adr/0002-deemix-structure-playlist-mode-and-exact-deemix-paths.md)),
-> backed up by an APFS clone and a text-only git repo ([ADR 0003](adr/0003-no-git-for-audio-apfs-clone-and-text-only-git.md)).
+> and Jellyfin owns the playlists ([ADR 0001](../adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md)),
+> at their exact Deemix paths ([ADR 0002](../adr/0002-deemix-structure-playlist-mode-and-exact-deemix-paths.md)),
+> backed up by an APFS clone and a text-only git repo ([ADR 0003](../adr/0003-no-git-for-audio-apfs-clone-and-text-only-git.md)).
 
 Research date: 2026-11 (Jellyfin server **10.11.11** on the user's instance at research time; server source inspected at
 `jellyfin/jellyfin` master commit [`797999f`](https://github.com/jellyfin/jellyfin/tree/797999fc9bd49a9f0853916e2933e3ad06173503)).

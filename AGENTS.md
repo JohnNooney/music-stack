@@ -1,6 +1,8 @@
 # AGENTS.md
 
-Home music stack: Jellyfin + Deemix + the Lidarr stack (Lidarr, Prowlarr, Soularr, Slskd, Transmission — all in `docker-compose.yml`, see `docs/lidarr-stack.md`) and three stdlib-only tools: `reorganize_playlists` (imports/migration inside the Deemix library), `union_library` (the `~/Music/Jellyfin` symlink union Jellyfin scans — see `docs/union_library.md`, ADR 0004) and `library_watcher` (the compose sidecar that polls the source trees and runs migrate → union → import on change — spec 0004, ADR 0005). Vocabulary is in `CONTEXT.md`. Read `docs/adr/` before changing the library layout, the Deemix settings or the pinned images. Secrets live only in `.env` and the git-ignored app config dirs — never whitelist `soularr/config.ini` in `.gitignore`.
+Home music stack: Jellyfin + Deemix + the Lidarr stack (Lidarr, Prowlarr, Soularr, Slskd, Transmission — all in `docker-compose.yml`, see `docs/reference/lidarr-stack.md`) and three stdlib-only tools: `reorganize_playlists` (imports/migration inside the Deemix library), `union_library` (the `~/Music/Jellyfin` symlink union Jellyfin scans — see `docs/reference/union_library.md`, ADR 0004) and `library_watcher` (the compose sidecar that polls the source trees and runs migrate → union → import on change — spec 0004, ADR 0005). Vocabulary is in `CONTEXT.md`. Read `docs/explanation/adr/` before changing the library layout, the Deemix settings or the pinned images. Secrets live only in `.env` and the git-ignored app config dirs — never whitelist `soularr/config.ini` in `.gitignore`.
+
+Docs follow [Diátaxis](https://diataxis.fr/): `docs/how-to/` (task guides), `docs/reference/` (facts — tool usage, layouts, settings), `docs/explanation/` (why — `adr/`, `specs/`, `research/`). Index at `docs/README.md`. Put new docs in the matching quadrant and don't mix types in one page — link out instead. No `tutorials/` yet; don't create empty scaffolding.
 
 ## Verify
 

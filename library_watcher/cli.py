@@ -4,7 +4,7 @@ Detection is polling, not filesystem events: every WATCH_INTERVAL_S the watcher 
 fingerprint of the directory entries the tools care about (names + mtimes, never contents).
 A job fires only after the fingerprint has been stable for QUIET_PERIOD_S, and each job's
 trigger-set hash is remembered so a failed run refires only on change or after RETRY_COOLDOWN_S.
-See docs/specs/0004-library-watcher.md and ADR 0005.
+See docs/explanation/specs/0004-library-watcher.md and ADR 0005.
 """
 
 from __future__ import annotations
