@@ -101,7 +101,10 @@ def fingerprint(deemix: Path, lidarr: Path, overrides: Path) -> Fingerprint | No
         return None
     for entry in entries:
         name = nfc(entry.name)
-        if name in DEFAULT_EXCLUDES:
+        # Dot entries are all tooling state (.git, .reorganize, .inventory.tsv, .DS_Store…) — the
+        # tools rewrite them every run, so watching them would self-trigger. Real entries are
+        # "Artist - Album" folders; the Lidarr walk and playlist check already skip dots too.
+        if name.startswith(".") or name in DEFAULT_EXCLUDES:
             continue
         try:
             mtime = entry.stat(follow_symlinks=False).st_mtime_ns

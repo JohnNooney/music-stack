@@ -222,6 +222,15 @@ class TriggerTest(WatcherTestCase):
         self.assertTrue((self.deemix / ".reorganize" / "watcher-state.json").is_file())
         self.assertEqual(self.commands(), ["migrate", "union"])
 
+    def test_tool_churn_dotfiles_do_not_self_trigger(self) -> None:
+        # migrate/import rewrite .inventory.tsv and .gitignore at the library root on every run.
+        self.clock.hooks = [lambda: (self.deemix / ".inventory.tsv").write_text("x\n"),
+                            self.noop, self.noop]
+
+        self.run_watcher("--watch-interval", "30", "--quiet-period", "30")
+
+        self.assertEqual(self.commands(), ["migrate", "union"])
+
 
 class ModeTest(WatcherTestCase):
     def test_migrate_mode_dry_adds_dry_run(self) -> None:
