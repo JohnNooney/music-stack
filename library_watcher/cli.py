@@ -199,6 +199,7 @@ def _materialise_env(source: Path) -> Path:
             values[key] = os.environ[key]
     dest = Path(tempfile.gettempdir()) / "library_watcher-jellyfin.env"
     dest.write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
+    dest.chmod(0o600)
     return dest
 
 
@@ -234,10 +235,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-cooldown", type=float, metavar="S",
                         default=_env_seconds("RETRY_COOLDOWN_S", 900.0),
                         help="earliest refire of a failed job (env RETRY_COOLDOWN_S, default: %(default)s)")
-    parser.add_argument("--migrate-mode", metavar="auto|dry|off",
+    parser.add_argument("--migrate-mode", metavar="|".join(MODES),
                         default=os.environ.get("MIGRATE_MODE", "auto"),
                         help="run migrate live, as a dry run, or never (env MIGRATE_MODE, default: %(default)s)")
-    parser.add_argument("--import-mode", metavar="auto|dry|off",
+    parser.add_argument("--import-mode", metavar="|".join(MODES),
                         default=os.environ.get("IMPORT_MODE", "auto"),
                         help="run import live, as a dry run, or never (env IMPORT_MODE, default: %(default)s)")
     parser.add_argument("--once", action="store_true",
@@ -370,8 +371,6 @@ class Watcher:
         self.attempted[job] = Attempt(trigger, now, retry_after)
 
     def _argv(self, job: str) -> list[str]:
-        if job == "union":
-            return self._union_argv()
         argv = [sys.executable, "-m", "reorganize_playlists",
                 "--root", str(self.cfg.deemix), "--env", str(self.cfg.effective_env)]
         argv.append(job)

@@ -65,7 +65,7 @@ def union_ops_report() -> str:
             "Report: /u/.union/runs/r1/report.txt\n")
 
 
-def flag(argv: list[str], name: str) -> str:
+def flag_value(argv: list[str], name: str) -> str:
     return argv[argv.index(name) + 1]
 
 
@@ -102,6 +102,17 @@ class WatcherTestCase(unittest.TestCase):
         self.assertEqual(code, expect, self.output)
         return self.output
 
+    def set_env(self, key: str, value: str) -> None:
+        self.addCleanup(self._restore_env, key, os.environ.get(key))
+        os.environ[key] = value
+
+    @staticmethod
+    def _restore_env(key: str, old: str | None) -> None:
+        if old is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = old
+
     def commands(self) -> list[str]:
         return [job_key(c) for c in self.runner.calls]
 
@@ -123,24 +134,24 @@ class StartupTest(WatcherTestCase):
 
         migrate, union = self.runner.calls
         self.assertEqual(migrate[1:3], ["-m", "reorganize_playlists"])
-        self.assertEqual(flag(migrate, "--root"), str(self.deemix))
+        self.assertEqual(flag_value(migrate, "--root"), str(self.deemix))
         self.assertEqual(migrate[-1], "migrate")
         self.assertEqual(union[1:3], ["-m", "union_library"])
-        self.assertEqual(flag(union, "--union"), str(self.union))
-        self.assertEqual(flag(union, "--deemix"), str(self.deemix))
-        self.assertEqual(flag(union, "--lidarr"), str(self.lidarr))
-        self.assertEqual(flag(union, "--overrides"), str(self.overrides))
+        self.assertEqual(flag_value(union, "--union"), str(self.union))
+        self.assertEqual(flag_value(union, "--deemix"), str(self.deemix))
+        self.assertEqual(flag_value(union, "--lidarr"), str(self.lidarr))
+        self.assertEqual(flag_value(union, "--overrides"), str(self.overrides))
 
     def test_env_file_is_materialised_and_passed_to_children(self) -> None:
-        os.environ["JELLYFIN_URL"] = "http://jellyfin:8096"
-        self.addCleanup(lambda: os.environ.pop("JELLYFIN_URL", None))
+        self.set_env("JELLYFIN_URL", "http://jellyfin:8096")
 
         self.run_watcher("--once")
 
         effective = Path(tempfile.gettempdir()) / "library_watcher-jellyfin.env"
-        self.assertEqual(flag(self.runner.calls[0], "--env"), str(effective))
+        self.assertEqual(flag_value(self.runner.calls[0], "--env"), str(effective))
         self.assertIn("JELLYFIN_URL=http://jellyfin:8096", effective.read_text())
         self.assertIn("JELLYFIN_API_KEY=test-key", effective.read_text())
+        self.assertEqual(effective.stat().st_mode & 0o777, 0o600)
 
 
 class TriggerTest(WatcherTestCase):
@@ -244,10 +255,8 @@ class ModeTest(WatcherTestCase):
         self.assertEqual(self.commands(), ["migrate", "union", "migrate", "union"])
 
     def test_modes_come_from_the_environment(self) -> None:
-        os.environ["MIGRATE_MODE"] = "off"
-        os.environ["IMPORT_MODE"] = "off"
-        self.addCleanup(lambda: (os.environ.pop("MIGRATE_MODE", None),
-                                 os.environ.pop("IMPORT_MODE", None)))
+        self.set_env("MIGRATE_MODE", "off")
+        self.set_env("IMPORT_MODE", "off")
 
         self.run_watcher("--once")
 
