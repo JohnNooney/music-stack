@@ -1,6 +1,6 @@
 # Home music stack
 
-Deemix downloads music into one library on disk and the Lidarr stack (in `../lidarr-stack`) into another. `union_library` merges them into a single deduplicated union root of symlinks that Jellyfin serves, laid out so every song can be browsed by its real artist and album. Playlists are Jellyfin playlists you edit in the Jellyfin UI. Vocabulary: [CONTEXT.md](CONTEXT.md).
+Deemix downloads music into one library on disk and the Lidarr stack into another. `union_library` merges them into a single deduplicated union root of symlinks that Jellyfin serves, laid out so every song can be browsed by its real artist and album. Playlists are Jellyfin playlists you edit in the Jellyfin UI. Vocabulary: [CONTEXT.md](CONTEXT.md).
 
 ## Services (`docker-compose.yml`)
 
@@ -8,14 +8,21 @@ Deemix downloads music into one library on disk and the Lidarr stack (in `../lid
 |---|---|---|---|
 | `jellyfin` | `jellyfin/jellyfin:12.4` | 8096/tcp (web), 7359/udp (discovery) | `./config` → `/config`, `./cache` → `/cache`, `~/Music/Jellyfin` → `/media` (union root), `~/Music/Deemix` → `/Deemix:ro`, `~/Music/Lidarr` → `/Lidarr:ro` |
 | `deemix` | `ghcr.io/bambanah/deemix:v4.8.0` | 6595 (web) | `~/Music/Deemix` → `/downloads`, `./deemix-config` → `/config` |
+| `lidarr` | `ghcr.io/hotio/lidarr:latest` | 8686 (web) | `./lidarr` → `/config`, `${DATA_DIR}` → `/data` |
+| `prowlarr` | `ghcr.io/hotio/prowlarr:latest` | 9696 (web) | `./prowlarr` → `/config`, `${DATA_DIR}` → `/data` |
+| `soularr` | `mrusse08/soularr:latest` | 8265 (web) | `./soularr` → `/data` (holds `config.ini`), `${DATA_DIR}/slskd/{downloads,incomplete}` |
+| `slskd` | `slskd/slskd` | 5030 (web), 5031 (https), 50300 (slsk listen) | `./slskd` → `/app`, `${DATA_DIR}/slskd/{downloads,incomplete}`, `${DATA_DIR}/media` → `/data:ro`, `~/Music/Deemix` → `/deemix:ro` |
+| `transmission` | `lscr.io/linuxserver/transmission:latest` | 9091 (web), 51413 (t/u peer) | `./transmission` → `/config`, `${DATA_DIR}/torrents` → `/data/torrents` |
 
-Both run as uid/gid 501. `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs) and `deemix-config/` (credentials, queue, logs — they used to live in the music library). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`.
+`jellyfin`/`deemix` run as uid/gid 501; the Lidarr stack runs as `PUID`/`PGID` from `.env` (501:20 on this host). `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/lidarr-stack.md](docs/lidarr-stack.md#secrets-layout)).
 
 ```bash
-docker compose up -d                  # start both
+docker compose up -d                  # start everything (or name services to start a subset)
 docker compose stop jellyfin          # e.g. before moving files
 docker compose logs -f deemix
 ```
+
+Lidarr-stack usage and setup: [docs/lidarr-stack.md](docs/lidarr-stack.md).
 
 ## Library layout rules (`/Users/john/Music/Deemix`)
 
@@ -59,6 +66,7 @@ The library layout depends on Jellyfin's folder→album rules and on Deemix's pa
 ## Docs
 
 - [docs/union_library.md](docs/union_library.md): union root tool usage and the cutover runbook
+- [docs/lidarr-stack.md](docs/lidarr-stack.md): Lidarr/Prowlarr/Soularr/Slskd/Transmission services, secrets layout, setup
 - [docs/reorganize_playlists.md](docs/reorganize_playlists.md): tool usage
 - [docs/runbook-migration.md](docs/runbook-migration.md): one-off migration, with the done checklist
 - [docs/adr/](docs/adr/): decisions you should not undo without reading them first

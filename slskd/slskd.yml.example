@@ -1,0 +1,77 @@
+# Example slskd.yml — the active (non-default) settings from this stack.
+# On first run slskd copies its own fully-commented default to /app/slskd.yml;
+# this file documents what we changed. Anything not listed here is default.
+#
+# Secrets are NOT in this file. They come from SLSKD_* env vars set in
+# docker-compose.yml (values live in the git-ignored .env):
+#   SLSKD_SLSK_USERNAME / SLSKD_SLSK_PASSWORD  -> soulseek.username/password
+#   SLSKD_USERNAME / SLSKD_PASSWORD            -> web.authentication.username/password
+#   SLSKD_API_KEY                            -> primary web API key (what soularr uses)
+# Note: YAML keys override env vars when both are set, so leave those unset here.
+
+ directories:
+   incomplete: /incomplete
+   downloads: /downloads
+ shares:
+   directories:
+     - /data/music
+     - /deemix
+ transfers:
+   upload:
+     slots: 15
+     speed_limit: 5000 # in kibibytes
+     limits:
+       queued:
+         files: 250
+         megabytes: 2500
+       daily:
+         files: 500
+         megabytes: 5000
+         failures: 50
+       weekly:
+         files: 2000
+         megabytes: 20000
+         failures: 200
+   groups:
+     default:
+       upload:
+         priority: 500
+         strategy: roundrobin
+         slots: 10
+         limits:
+           queued:
+             files: 100
+             megabytes: 1000
+           weekly:
+             files: 1000
+             megabytes: 10000
+             failures: 100
+     leechers:
+       thresholds:
+         files: 100
+         directories: 5
+       upload:
+         priority: 999
+         strategy: roundrobin
+         slots: 1 # 1 is the minimum; leechers are blocked by limits below
+         speed_limit: 100
+         limits:
+           queued:
+             files: 1
+             megabytes: 1
+           daily:
+             files: 1
+             megabytes: 1
+             failures: 1
+           weekly:
+             files: 1
+             megabytes: 1
+             failures: 1
+     blacklisted:
+       members: []
+       patterns: []
+       cidrs: []
+ web:
+#   authentication:        # <- all keys come from SLSKD_* env vars (see header)
+ soulseek:
+#   username/password:     # <- SLSKD_SLSK_USERNAME / SLSKD_SLSK_PASSWORD

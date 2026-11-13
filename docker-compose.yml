@@ -50,3 +50,140 @@ services:
       # Config (credentials, queue, logs) lives in this repo, git-ignored, never in the scanned library.
       - /Users/john/Docker/jellyfin/deemix-config:/config
     restart: 'unless-stopped'
+
+  # --- Lidarr stack (imported from ../lidarr-stack) ---
+  # These five run as ${PUID}:${PGID} from .env (501:20 on this host — note that
+  # differs from jellyfin/deemix's 501:501 above). Inter-service addresses use the
+  # *.internal network aliases below; plain service names resolve too.
+
+  prowlarr:
+    container_name: prowlarr
+    hostname: prowlarr.internal
+    networks:
+      default:
+        aliases:
+          - prowlarr.internal
+    image: ghcr.io/hotio/prowlarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    ports:
+      - "9696:9696"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=002
+      - TZ=${TZ}
+    volumes:
+      - ./prowlarr:/config
+      - ${DATA_DIR}:/data
+
+  lidarr:
+    container_name: lidarr
+    hostname: lidarr.internal
+    networks:
+      default:
+        aliases:
+          - lidarr.internal
+    image: ghcr.io/hotio/lidarr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    ports:
+      - "8686:8686"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=002
+      - TZ=${TZ}
+    volumes:
+      - ./lidarr:/config
+      - ${DATA_DIR}:/data
+
+  transmission:
+    container_name: transmission
+    hostname: transmission.internal
+    networks:
+      default:
+        aliases:
+          - transmission.internal
+    image: lscr.io/linuxserver/transmission:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    ports:
+      - "9091:9091"
+      - "51413:51413"
+      - "51413:51413/udp"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # Uncomment to set a web UI login (otherwise no auth on the RPC port);
+      # values come from .env.
+      # - USER=${TRANSMISSION_USER}
+      # - PASS=${TRANSMISSION_PASS}
+    volumes:
+      - ./transmission:/config
+      - ${DATA_DIR}/torrents:/data/torrents
+
+  soularr:
+    container_name: soularr
+    hostname: soularr.internal
+    networks:
+      default:
+        aliases:
+          - soularr.internal
+    image: mrusse08/soularr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    ports:
+      - "8265:8265"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=002
+      - TZ=${TZ}
+      - SCRIPT_INTERVAL=300
+      - WEBUI_ENABLED=true
+    volumes:
+      - ${DATA_DIR}/slskd/downloads:/downloads
+      - ${DATA_DIR}/slskd/incomplete:/incomplete
+      # config.ini (untracked — holds the Lidarr and slskd API keys) lives here;
+      # see config.ini.example for the shape.
+      - ./soularr:/data
+
+  slskd:
+    container_name: slskd
+    hostname: slskd.internal
+    networks:
+      default:
+        aliases:
+          - slskd.internal
+    image: slskd/slskd
+    restart: unless-stopped
+    ports:
+      - "5030:5030"
+      - "5031:5031"
+      - "50300:50300"
+    logging:
+      driver: json-file
+    user: "${PUID}:${PGID}"
+    environment:
+      - UMASK=002
+      - SLSKD_REMOTE_CONFIGURATION=true
+      - TZ=${TZ}
+      # Credentials come from .env, not slskd.yml (env vars lose to YAML keys
+      # when both are set — the yml deliberately leaves these unset).
+      - SLSKD_SLSK_USERNAME=${SLSKD_SLSK_USERNAME}
+      - SLSKD_SLSK_PASSWORD=${SLSKD_SLSK_PASSWORD}
+      - SLSKD_USERNAME=${SLSKD_USERNAME}
+      - SLSKD_PASSWORD=${SLSKD_PASSWORD}
+      - SLSKD_API_KEY=${SLSKD_API_KEY}
+    volumes:
+      - ./slskd:/app
+      - ${DATA_DIR}/slskd/downloads:/downloads
+      - ${DATA_DIR}/slskd/incomplete:/incomplete
+      - ${DATA_DIR}/media:/data:ro
+      - /Users/john/Music/Deemix:/deemix:ro

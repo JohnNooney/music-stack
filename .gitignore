@@ -11,6 +11,19 @@ cache/
 !/deemix-config/config.json
 !/deemix-config/config.json.before-structure-playlist
 
+# Lidarr stack app configs: runtime state + secrets (API keys, Soulseek/web credentials).
+# Nothing under these is tracked except the *.example templates below.
+# NOTE: do NOT whitelist soularr/config.ini itself — it holds live API keys.
+/lidarr/
+/prowlarr/
+/transmission/
+/slskd/*
+!/slskd/slskd.yml.example
+/soularr/*
+!/soularr/config.ini.example
+# In case a local data/ dir is ever used instead of an external DATA_DIR
+/data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
