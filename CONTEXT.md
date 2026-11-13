@@ -7,8 +7,18 @@ A self-hosted music setup where Deemix downloads music into a single on-disk lib
 ### Library
 
 **Library root**:
-The single directory that Deemix downloads into and Jellyfin scans as its music library.
+The directory `~/Music/Deemix` that Deemix downloads into; Jellyfin sees it only through the union root's links.
 _Avoid_: media folder, downloads folder
+
+**Union root**:
+The directory `~/Music/Jellyfin/` containing one symlink per album (plus loose-root items), the only directory Jellyfin scans.
+_Avoid_: merged library, virtual root
+
+**Union entry**:
+One top-level entry inside the union root — a symlink to an album folder in either source tree, or to a loose root item from the Deemix library root.
+
+**Source tree**:
+Either `~/Music/Deemix` (the Deemix library root) or `~/Music/Lidarr/media/music` (Lidarr's `<Artist>/<Album> (<Year>)` root); the union links into these, never modifies them.
 
 **Album folder**:
 A folder at the library root, named `<Album artist> - <Album>`, that holds tracks from exactly one album and nothing else.

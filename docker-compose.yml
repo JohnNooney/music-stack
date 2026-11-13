@@ -12,9 +12,19 @@ services:
     volumes:
       - /Users/john/Docker/jellyfin/config:/config
       - /Users/john/Docker/jellyfin/cache:/cache
+      # /media is the union root built by union_library (ADR 0004); the source trees are
+      # mounted read-only at sibling paths purely so its relative symlinks resolve in-container.
+      - type: bind
+        source: /Users/john/Music/Jellyfin
+        target: /media
       - type: bind
         source: /Users/john/Music/Deemix
-        target: /media
+        target: /Deemix
+        read_only: true
+      - type: bind
+        source: /Users/john/Music/Lidarr
+        target: /Lidarr
+        read_only: true
     restart: 'unless-stopped'
     # Optional - alternative address used for autodiscovery
     environment:

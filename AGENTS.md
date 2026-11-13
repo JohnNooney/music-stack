@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Home music stack: Jellyfin + Deemix (`docker-compose.yml`) and the `reorganize_playlists` tool. Vocabulary is in `CONTEXT.md`. Read `docs/adr/` before changing the library layout, the Deemix settings or the pinned images.
+Home music stack: Jellyfin + Deemix (`docker-compose.yml`) and two stdlib-only tools: `reorganize_playlists` (imports/migration inside the Deemix library) and `union_library` (the `~/Music/Jellyfin` symlink union Jellyfin scans — see `docs/union_library.md`, ADR 0004). Vocabulary is in `CONTEXT.md`. Read `docs/adr/` before changing the library layout, the Deemix settings or the pinned images.
 
 ## Verify
 
@@ -10,7 +10,7 @@ Home music stack: Jellyfin + Deemix (`docker-compose.yml`) and the `reorganize_p
 
 ## Testing seam
 
-Test only through `main(argv, deezer=FakeDeezer, jellyfin=FakeJellyfin)` against a real temp library built with `tests/support.py`, observing files, reports and fake-client state. The HTTP clients get a manual smoke check, not unit tests.
+Test only through `main(argv, deezer=FakeDeezer, jellyfin=FakeJellyfin)` (`reorganize_playlists`) or `main(argv)` (`union_library`, no fakes — it makes no API calls) against real temp trees, observing files, reports and fake-client state. The HTTP clients get a manual smoke check, not unit tests.
 
 ## Gotchas
 

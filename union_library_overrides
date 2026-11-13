@@ -1,0 +1,8 @@
+# union_library overrides: one directive per line.
+#   match <deemix-name> = <lidarr-artist>/<lidarr-album>         force dedupe, Lidarr target
+#   prefer-deemix <deemix-name> = <lidarr-artist>/<lidarr-album> force match, keep Deemix target
+#   keep-both <deemix-name> = <lidarr-artist>/<lidarr-album>     suppress dedupe, emit both
+# Names are the literal folder names. Unmatched lines are reported as unused.
+
+# 'And' vs '&' defeats the normaliser; same release, so dedupe onto the Lidarr copy.
+match Eek-A-Mouse - The Mouse And The Man = Eek‐A‐Mouse/The Mouse & The Man (1983)
