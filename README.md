@@ -1,6 +1,6 @@
 # Home music stack
 
-Deemix downloads music into one library on disk and the Lidarr stack into another. `union_library` merges them into a single deduplicated union root of symlinks that Jellyfin serves, laid out so every song can be browsed by its real artist and album. Playlists are Jellyfin playlists you edit in the Jellyfin UI. Vocabulary: [CONTEXT.md](CONTEXT.md).
+Deemix downloads music into one library on disk and the Lidarr stack into another. `union_library` merges them into a single deduplicated union root of symlinks that Jellyfin serves, laid out so every song can be browsed by its real artist and album. Playlists are Jellyfin playlists you edit in the Jellyfin UI. A `library-watcher` sidecar polls the source trees and runs the migrate → union → import pipeline automatically when they change ([ADR 0005](docs/adr/0005-library-watcher-sidecar.md)). Vocabulary: [CONTEXT.md](CONTEXT.md).
 
 ## Services (`docker-compose.yml`)
 
@@ -8,13 +8,15 @@ Deemix downloads music into one library on disk and the Lidarr stack into anothe
 |---|---|---|---|
 | `jellyfin` | `jellyfin/jellyfin:12.4` | 8096/tcp (web), 7359/udp (discovery) | `./config` → `/config`, `./cache` → `/cache`, `~/Music/Jellyfin` → `/media` (union root), `~/Music/Deemix` → `/Deemix:ro`, `~/Music/Lidarr` → `/Lidarr:ro` |
 | `deemix` | `ghcr.io/bambanah/deemix:v4.8.0` | 6595 (web) | `~/Music/Deemix` → `/downloads`, `./deemix-config` → `/config` |
+| `library-watcher` | built from `docker/library-watcher/` (`python:3.13.18-alpine` + git) | — | repo → `/tools:ro`, `~/Music` → same path |
 | `lidarr` | `ghcr.io/hotio/lidarr:latest` | 8686 (web) | `./lidarr` → `/config`, `${DATA_DIR}` → `/data` |
 | `prowlarr` | `ghcr.io/hotio/prowlarr:latest` | 9696 (web) | `./prowlarr` → `/config`, `${DATA_DIR}` → `/data` |
+| `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr:latest` | 8191 | stateless — tmpfs `/tmp` for browser profiles |
 | `soularr` | `mrusse08/soularr:latest` | 8265 (web) | `./soularr` → `/data` (holds `config.ini`), `${DATA_DIR}/slskd/{downloads,incomplete}` |
 | `slskd` | `slskd/slskd` | 5030 (web), 5031 (https), 50300 (slsk listen) | `./slskd` → `/app`, `${DATA_DIR}/slskd/{downloads,incomplete}`, `${DATA_DIR}/media` → `/data:ro`, `~/Music/Deemix` → `/deemix:ro` |
 | `transmission` | `lscr.io/linuxserver/transmission:latest` | 9091 (web), 51413 (t/u peer) | `./transmission` → `/config`, `${DATA_DIR}/torrents` → `/data/torrents` |
 
-`jellyfin`/`deemix` run as uid/gid 501; the Lidarr stack runs as `PUID`/`PGID` from `.env` (501:20 on this host). `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/lidarr-stack.md](docs/lidarr-stack.md#secrets-layout)).
+`jellyfin`/`deemix`/`library-watcher` run as uid/gid 501; the Lidarr stack runs as `PUID`/`PGID` from `.env` (501:20 on this host — FlareSolverr ignores them, its image uses a fixed user). `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/lidarr-stack.md](docs/lidarr-stack.md#secrets-layout)).
 
 ```bash
 docker compose up -d                  # start everything (or name services to start a subset)
@@ -35,11 +37,11 @@ Lidarr-stack usage and setup: [docs/lidarr-stack.md](docs/lidarr-stack.md).
 ## Workflow: download → import
 
 1. Open Deemix at http://localhost:6595 and download playlists. Tracks land straight in album folders, and one `<Playlist>.m3u8` is written at the library root.
-2. Run the import:
+2. `library-watcher` takes it from there: once the source trees settle it runs `migrate` (dedups and places loose tracks) → `union_library` (refreshes the union root) → `import`. To run the import by hand instead:
    ```bash
    python3 -m reorganize_playlists import
    ```
-   This scans Jellyfin and waits for the scan to finish. It appends songs that are new on Deezer to the matching Jellyfin playlist without undoing your edits, and reports songs Deezer dropped. It archives `errors.txt`/`cover.jpg` and uploads the cover, moves the playlist file out of the library, exports all playlists and the inventory, and commits to the library's git repo (never pushed).
+   It scans Jellyfin and waits for the scan to finish. It appends songs that are new on Deezer to the matching Jellyfin playlist without undoing your edits, and reports songs Deezer dropped. It archives `errors.txt`/`cover.jpg` and uploads the cover, moves the playlist file out of the library, exports all playlists and the inventory, and commits to the library's git repo (never pushed).
 
 Setup: `cp .env.example .env` and set `JELLYFIN_API_KEY` (Jellyfin → Dashboard → API Keys). Full tool reference: [docs/reorganize_playlists.md](docs/reorganize_playlists.md). The one-off migration from the old `Playlists/<Name>/` layout: [docs/runbook-migration.md](docs/runbook-migration.md).
 
@@ -67,10 +69,15 @@ The library layout depends on Jellyfin's folder→album rules and on Deemix's pa
 
 - [docs/runbook-setup.md](docs/runbook-setup.md): initial setup from a fresh clone, end to end
 - [docs/union_library.md](docs/union_library.md): union root tool usage and the cutover runbook
+- [docs/specs/0004-library-watcher.md](docs/specs/0004-library-watcher.md): the `library-watcher` sidecar spec ([ADR 0005](docs/adr/0005-library-watcher-sidecar.md))
 - [docs/lidarr-stack.md](docs/lidarr-stack.md): Lidarr/Prowlarr/Soularr/Slskd/Transmission services, secrets layout, setup
 - [docs/reorganize_playlists.md](docs/reorganize_playlists.md): tool usage
 - [docs/runbook-migration.md](docs/runbook-migration.md): one-off migration, with the done checklist
 - [docs/adr/](docs/adr/): decisions you should not undo without reading them first
 - [docs/jellyfin-music-metadata-research.md](docs/jellyfin-music-metadata-research.md): why Jellyfin made pseudo-albums
+- [docs/jellyfin-multilibrary-dedup-research.md](docs/jellyfin-multilibrary-dedup-research.md): why a symlink union instead of multiple Jellyfin libraries
+- [docs/deemix-jellyfin-plugin-research.md](docs/deemix-jellyfin-plugin-research.md): the trigger options (WebSocket, launchd, polling) the watcher chose between
+- [docs/flaresolverr-research.md](docs/flaresolverr-research.md): FlareSolverr vs Byparr for Cloudflare-blocked Prowlarr indexers
+- [docs/lidarr-stack-merge-research.md](docs/lidarr-stack-merge-research.md): how the Lidarr stack was merged into this repo without leaking secrets
 - [docs/specs/](docs/specs/): specs
 - [docs/dedup_music.md](docs/dedup_music.md): the retired `dedup_music.py`
