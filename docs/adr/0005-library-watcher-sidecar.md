@@ -1,0 +1,24 @@
+# ADR 0005: A compose sidecar polls the source trees and runs `migrate`, `union_library` and `import`
+
+**Status:** accepted (2026-11-13) · **Spec:** [0004](../specs/0004-library-watcher.md) · **Evidence:** [deemix-jellyfin-plugin-research.md](../deemix-jellyfin-plugin-research.md), [spec 0003](../specs/0003-union-library-for-deemix-and-lidarr.md)
+
+## Context
+
+The union root (ADR 0004) is only as fresh as the last manual pipeline run — `migrate` (file phase: dedup, place loose tracks) → `union_library` → `import` — and playlist imports only happen when someone runs them by hand. Order is load-bearing: Deemix singles land loose at the library root (`createSingleFolder: false`) and re-downloads leave duplicate copies, while `union_library` mirrors every top-level entry verbatim — so the union must run on an already-deduped tree or duplicates get linked into the path Jellyfin scans. ADR 0004's stated consequence — "there is no daemon; scheduled scans pick up the union as-is" — leaves all of it unscheduled. Two trigger options from the research doc were rejected: the Deemix WebSocket (`finishDownload`/queue-empty) has no stdlib client and the project is stdlib-only; real filesystem events do not propagate through Docker Desktop bind mounts on macOS (Jellyfin's own realtime monitor is enabled but documented-flaky for the same reason). A host `launchd` agent would get real events but drifts automation outside the compose-managed stack.
+
+## Decision
+
+1. **A `library-watcher` service in `docker-compose.yml`** runs a new stdlib-only package `library_watcher/` from this repo. Detection is **polling**: every `WATCH_INTERVAL_S` (default 30 s) it fingerprints the same entries `union_library` scans — Deemix top level, Lidarr `Artist/Album`, the Deemix-root `*.m3u8` set, plus `union_library_overrides` — names + mtimes only. A job fires when the fingerprint is stable for `QUIET_PERIOD_S` (default 60 s): stability, not first-change, is the trigger.
+2. **One worker, three serialized jobs in routine order.** A Deemix change runs `migrate` then `union_library`; a Lidarr-only change runs `union_library` alone (`migrate` never touches that tree); a new/changed root `*.m3u8` appends `import`, whose own scan then covers both the fresh union and the playlist merge. `migrate` must precede the union because it dedups the tree the union mirrors — and because it refuses to run while Jellyfin is scanning, it also precedes the union's `POST /Library/Refresh` nudge and `import`'s scan. `migrate` and `import` are gated by `MIGRATE_MODE`/`IMPORT_MODE` (`auto|dry|off`, default `auto`); `retag`, `rollback` and `migrate --phase playlists` are never automated. All run as subprocesses, reusing the tools' exit codes and reports. One unconditional `migrate` + `union_library` runs at container start.
+3. **Retry suppression with persisted state.** A failed job re-fires only when its trigger set changes or after `RETRY_COOLDOWN_S` (default 900 s); attempted trigger-set hashes persist in `<deemix>/.reorganize/watcher-state.json`, so restarts don't re-import processed playlists.
+4. **Same-path mounts and a container `JELLYFIN_URL`.** `/Users/john/Music` mounts at `/Users/john/Music` so every tool default and any absolute path inside `*.m3u8`s works verbatim; the repo mounts read-only at `/tools` (`PYTHONPATH=/tools`). The service overrides `JELLYFIN_URL=http://jellyfin:8096` — `.env`'s `localhost:8096` means the container itself — while the other `JELLYFIN_*` vars pass through. A tiny pinned `python:3.x-alpine` Dockerfile adds `git`, which `import` needs for its history commits (its built-in author fallback works unconfigured).
+
+## Consequences
+
+- Downloads surfacing in Jellyfin no longer depends on a human remembering two commands; the residual delay is poll + quiet period + scan (~2–3 min), versus the scheduled-scan-only status quo.
+- The `JELLYFIN_URL` override means the watcher service's env is *not* a verbatim passthrough — adding a new `JELLYFIN_*` variable means deciding whether the compose-network value differs from the host value.
+- `import` moves the root `*.m3u8` into `.playlists/imports/`; the mutation re-triggers the fingerprint, so the next cycle's `union_library` prunes the dangling union link automatically.
+- If Jellyfin is mid-scan when a Deemix change fires, `migrate` exits 2 (refuses) and is retried on the cooldown — `migrate`'s refusal is a normal transient, not an alarm.
+- A malformed `union_library_overrides` (exit 2) suppresses the union job until the file changes; the fix is to edit the file, which itself re-triggers via the fingerprint.
+- Adding a third source tree still requires re-reading ADR 0004 — and the watcher's fingerprint list must grow to cover it.
+- If the stdlib-only rule is ever relaxed, the Deemix WebSocket queue-empty signal is the documented upgrade over polling (research doc §"trigger options").
