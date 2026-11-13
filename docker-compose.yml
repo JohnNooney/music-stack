@@ -104,6 +104,29 @@ services:
       - ./prowlarr:/config
       - ${DATA_DIR}:/data
 
+  # FlareSolverr: solves Cloudflare challenges for Prowlarr indexers tagged to use it
+  # (see docs/flaresolverr-research.md). Stateless — no config volume.
+  # The image runs as a fixed flaresolverr user; PUID/PGID are not supported.
+  flaresolverr:
+    container_name: flaresolverr
+    hostname: flaresolverr.internal
+    networks:
+      default:
+        aliases:
+          - flaresolverr.internal
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    ports:
+      - "8191:8191"
+    environment:
+      - LOG_LEVEL=info   # set to debug when troubleshooting solves
+      - TZ=${TZ}
+    # Browser profiles are written per-request; RAM-backing spares the SSD.
+    tmpfs:
+      - /tmp:size=256M,mode=1777
+
   lidarr:
     container_name: lidarr
     hostname: lidarr.internal

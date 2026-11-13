@@ -18,6 +18,7 @@ moved into `.env`.
 | Soularr      | 8265               | Bridges Lidarr wanted albums to Slskd          |
 | Slskd        | 5030, 5031, 50300  | Soulseek client (web UI, http, listen port)    |
 | Transmission | 9091, 51413 (t/u)  | Torrent client (web UI + peer port)            |
+| FlareSolverr | 8191               | Solves Cloudflare challenges for tagged indexers (see [flaresolverr-research.md](flaresolverr-research.md)) |
 
 Each service's config dir (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`,
 `transmission/`) is git-ignored — it holds runtime state and secrets. The only
