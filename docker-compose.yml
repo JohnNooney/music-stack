@@ -33,6 +33,32 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
 
+  # Polls the Deemix/Lidarr source trees and runs migrate → union_library → import once they
+  # settle (spec 0004 / ADR 0005). Same-path Music mount keeps every tool default and any
+  # absolute path inside *.m3u8 files valid verbatim.
+  library-watcher:
+    build: docker/library-watcher
+    container_name: library-watcher
+    user: "501:501"
+    working_dir: /tools
+    volumes:
+      - /Users/john/Docker/jellyfin:/tools:ro
+      - /Users/john/Music:/Users/john/Music
+    environment:
+      - PYTHONPATH=/tools
+      - JELLYFIN_URL=http://jellyfin:8096
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      - JELLYFIN_USER=${JELLYFIN_USER}
+      - JELLYFIN_MEDIA_ROOT=${JELLYFIN_MEDIA_ROOT}
+      - TZ=${TZ}
+      - WATCH_INTERVAL_S=${WATCH_INTERVAL_S:-30}
+      - QUIET_PERIOD_S=${QUIET_PERIOD_S:-60}
+      - RETRY_COOLDOWN_S=${RETRY_COOLDOWN_S:-900}
+      - MIGRATE_MODE=${MIGRATE_MODE:-auto}
+      - IMPORT_MODE=${IMPORT_MODE:-auto}
+    restart: unless-stopped
+    command: ["python3", "-m", "library_watcher"]
+
   deemix:
     # Pinned: reorganize_playlists replicates this version's path generation (Deemix path).
     # Re-check pathtemplates.ts before upgrading.
