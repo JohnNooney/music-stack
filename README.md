@@ -65,6 +65,7 @@ The library layout depends on Jellyfin's folder→album rules and on Deemix's pa
 
 ## Docs
 
+- [docs/runbook-setup.md](docs/runbook-setup.md): initial setup from a fresh clone, end to end
 - [docs/union_library.md](docs/union_library.md): union root tool usage and the cutover runbook
 - [docs/lidarr-stack.md](docs/lidarr-stack.md): Lidarr/Prowlarr/Soularr/Slskd/Transmission services, secrets layout, setup
 - [docs/reorganize_playlists.md](docs/reorganize_playlists.md): tool usage
