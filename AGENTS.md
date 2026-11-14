@@ -7,7 +7,7 @@ Docs follow [Diátaxis](https://diataxis.fr/): `docs/how-to/` (task guides), `do
 ## Verify
 
 - Tests: `python3 -m unittest` (full suite, about 20 s because of real git commits) or `python3 -m unittest tests.test_import` (one file).
-- Typecheck: `.venv/bin/mypy` (strict; create it with `python3 -m venv .venv && .venv/bin/pip install mypy`).
+- Typecheck: `.venv/bin/mypy` (strict; `.venv` is a symlink to `~/.venvs/jellyfin` — the workspace volume is exFAT, so a venv created in-tree dies on `._*.pth` AppleDouble files at interpreter startup).
 - The tool itself is stdlib-only; keep it that way.
 
 ## Testing seam
@@ -18,4 +18,4 @@ Test only through `main(argv, deezer=FakeDeezer, jellyfin=FakeJellyfin)` (`reorg
 
 - macOS volumes are case- and normalisation-insensitive: `Deemix/` and `deemix/` collide in a temp dir, and NFC/NFD names refer to the same file.
 - python.org Python on macOS has no CA bundle; `deezer.py` falls back to `/etc/ssl/cert.pem`.
-- `/Users/john/Music/Deemix` is the real library. Live runs move real files, so dry-run first.
+- `/Volumes/512GB SSD/Music/Deemix` is the real library (compose's `MUSIC_DIR`; the old `/Users/john/Music` defaults in the tools' `--help` are stale from the previous host). Live runs move real files, so dry-run first.
