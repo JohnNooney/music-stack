@@ -40,8 +40,9 @@ tailnet-wide:
 The node's key must not expire, so it runs under a tailnet **tag**:
 
 1. Admin console → **Access controls (ACL)** / policy file: add the tag to
-   `tagOwners`, e.g. `"tagOwners": { "tag:container": ["you@example.com"] }`,
-   and save.
+   `tagOwners` with your Tailscale login identity — the email shown on the
+   **Users** page, e.g.
+   `"tagOwners": { "tag:container": ["you@gmail.com"] }`, and save.
 2. Admin console → **Settings** → **Keys** → **Generate auth key**: pick
    **Reusable**, allow **Ephemeral** devices, and assign the tag
    `tag:container`. Copy the `tskey-auth-…` value into `.env` as `TS_AUTHKEY`.
