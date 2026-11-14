@@ -91,10 +91,10 @@ class WatcherTestCase(unittest.TestCase):
         self.jellyfin = FakeJellyfin(self.union)
         self.output = ""
 
-    def run_watcher(self, *args: str, expect: int = 0) -> str:
-        argv = ["--deemix", str(self.deemix), "--lidarr", str(self.lidarr),
-                "--union", str(self.union), "--overrides", str(self.overrides),
-                "--env", str(self.env), *args]
+    def run_watcher(self, *args: str, paths: bool = True, expect: int = 0) -> str:
+        argv = (["--deemix", str(self.deemix), "--lidarr", str(self.lidarr),
+                 "--union", str(self.union)] if paths else []) + [
+                 "--overrides", str(self.overrides), "--env", str(self.env), *args]
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             code = main(argv, runner=self.runner, clock=self.clock, jellyfin=self.jellyfin)
@@ -152,6 +152,37 @@ class StartupTest(WatcherTestCase):
         self.assertIn("JELLYFIN_URL=http://jellyfin:8096", effective.read_text())
         self.assertIn("JELLYFIN_API_KEY=test-key", effective.read_text())
         self.assertEqual(effective.stat().st_mode & 0o777, 0o600)
+
+    def test_music_root_env_supplies_the_tree_paths(self) -> None:
+        self.set_env("MUSIC_ROOT", str(self.deemix.parent))
+
+        self.run_watcher("--once", paths=False)
+
+        migrate, union = self.runner.calls
+        self.assertEqual(flag_value(migrate, "--root"), str(self.deemix))
+        self.assertEqual(flag_value(union, "--union"), str(self.union))
+        self.assertEqual(flag_value(union, "--deemix"), str(self.deemix))
+        self.assertEqual(flag_value(union, "--lidarr"), str(self.lidarr))
+
+    def test_per_root_env_vars_override_music_root(self) -> None:
+        self.set_env("MUSIC_ROOT", "/nonexistent")
+        self.set_env("DEEMIX_ROOT", str(self.deemix))
+        self.set_env("LIDARR_ROOT", str(self.lidarr))
+        self.set_env("UNION_ROOT", str(self.union))
+
+        self.run_watcher("--once", paths=False)
+
+        migrate, union = self.runner.calls
+        self.assertEqual(flag_value(migrate, "--root"), str(self.deemix))
+        self.assertEqual(flag_value(union, "--union"), str(self.union))
+        self.assertEqual(flag_value(union, "--lidarr"), str(self.lidarr))
+
+    def test_path_flags_beat_the_environment(self) -> None:
+        self.set_env("MUSIC_ROOT", "/nonexistent")
+
+        self.run_watcher("--once")
+
+        self.assertEqual(self.commands(), ["migrate", "union"])
 
 
 class TriggerTest(WatcherTestCase):

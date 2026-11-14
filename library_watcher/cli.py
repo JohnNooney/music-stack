@@ -217,14 +217,21 @@ def _env_seconds(name: str, default: float) -> float:
         raise SystemExit(2)
 
 
+def _env_path(name: str, default: Path) -> Path:
+    raw = os.environ.get(name)
+    return Path(raw) if raw else default
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="library_watcher", description=__doc__)
-    parser.add_argument("--deemix", type=Path, default=MUSIC / "Deemix",
-                        help="Deemix library root (default: %(default)s)")
-    parser.add_argument("--lidarr", type=Path, default=MUSIC / "Lidarr" / "media" / "music",
-                        help="Lidarr music root (default: %(default)s)")
-    parser.add_argument("--union", type=Path, default=MUSIC / "Jellyfin",
-                        help="union root (default: %(default)s)")
+    music = _env_path("MUSIC_ROOT", MUSIC)
+    parser.add_argument("--deemix", type=Path, default=_env_path("DEEMIX_ROOT", music / "Deemix"),
+                        help="Deemix library root (env DEEMIX_ROOT, default: %(default)s)")
+    parser.add_argument("--lidarr", type=Path,
+                        default=_env_path("LIDARR_ROOT", music / "Lidarr" / "media" / "music"),
+                        help="Lidarr music root (env LIDARR_ROOT, default: %(default)s)")
+    parser.add_argument("--union", type=Path, default=_env_path("UNION_ROOT", music / "Jellyfin"),
+                        help="union root (env UNION_ROOT, default: %(default)s)")
     parser.add_argument("--overrides", type=Path, default=REPO / "union_library_overrides",
                         help="union overrides file (default: %(default)s)")
     parser.add_argument("--env", type=Path, default=REPO / ".env",

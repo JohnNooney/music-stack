@@ -25,6 +25,9 @@ here.
    - `SLSKD_SLSK_USERNAME`/`SLSKD_SLSK_PASSWORD` — Soulseek account.
    - `SLSKD_USERNAME`/`SLSKD_PASSWORD` — slskd web UI login.
    - `SLSKD_API_KEY` — invent one (16–255 chars). Soularr reuses it in step 8.
+   - `MUSIC_DIR` — the host tree holding `Deemix/`, `Lidarr/` and `Jellyfin/`
+     (the union root), mounted into `library-watcher` at `MUSIC_ROOT`
+     (default `/music`; leave unset unless relocating the mount).
    - Watcher knobs are optional — `WATCH_INTERVAL_S`, `QUIET_PERIOD_S`,
      `RETRY_COOLDOWN_S`, `MIGRATE_MODE`, `IMPORT_MODE` all have compose
      defaults; add them to `.env` only to override.
@@ -109,8 +112,8 @@ here.
 - Secrets never live in tracked files. `.env` and the app config dirs are
   git-ignored; only `*.example` templates are tracked. Full layout:
   [lidarr-stack.md § Secrets](../reference/lidarr-stack.md#secrets-layout).
-- The arr services run as `${PUID}:${PGID}` (501:20 here);
-  `jellyfin`/`deemix`/`library-watcher` stay on `501:501` — that difference is
+- The arr services run as `${PUID}:${PGID}` (502:20 here);
+  `jellyfin`/`deemix`/`library-watcher` stay on `502:20` — that difference is
   intentional.
 - Per-service detail: [wire-lidarr-stack.md](wire-lidarr-stack.md).
   Troubleshooting ("what failure looks like"): [add-music.md](add-music.md).

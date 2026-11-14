@@ -1,3 +1,7 @@
+# macOS AppleDouble sidecars (the workspace volume is exFAT — the FS writes ._*
+# next to every file; they are metadata junk, never source)
+._*
+
 cache/
 # Jellyfin config: track the XML settings the library layout depends on; ignore db, metadata, logs
 /config/*

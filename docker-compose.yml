@@ -15,14 +15,14 @@ services:
       # /media is the union root built by union_library (ADR 0004); the source trees are
       # mounted read-only at sibling paths purely so its relative symlinks resolve in-container.
       - type: bind
-        source: /Volumes/512GB SSD/Music/Jellyfin
+        source: ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Jellyfin
         target: /media
       - type: bind
-        source: /Volumes/512GB SSD/Music/Deemix
+        source: ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Deemix
         target: /Deemix
         read_only: true
       - type: bind
-        source: /Volumes/512GB SSD/Music/Lidarr
+        source: ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Lidarr
         target: /Lidarr
         read_only: true
     restart: 'unless-stopped'
@@ -34,8 +34,9 @@ services:
       - 'host.docker.internal:host-gateway'
 
   # Polls the Deemix/Lidarr source trees and runs migrate → union_library → import once they
-  # settle (spec 0004 / ADR 0005). Same-path Music mount keeps every tool default and any
-  # absolute path inside *.m3u8 files valid verbatim.
+  # settle (spec 0004 / ADR 0005). The host tree (MUSIC_DIR) mounts at MUSIC_ROOT and the
+  # watcher resolves Deemix/Jellyfin/Lidarr underneath it — the sibling layout is what keeps
+  # union_library's relative symlinks (../Deemix/…) valid in Jellyfin's /media + /Deemix mounts.
   library-watcher:
     build: docker/library-watcher
     container_name: library-watcher
@@ -43,11 +44,15 @@ services:
     working_dir: /tools
     volumes:
       - /Volumes/512GB SSD/jellyfin:/tools:ro
-      # Mount source changed for the new host; target stays /Users/john/Music so the
-      # tools' hardcoded defaults and any absolute paths inside the tree stay valid.
-      - /Volumes/512GB SSD/Music:/Users/john/Music
+      - ${MUSIC_DIR:-/Volumes/512GB SSD/Music}:${MUSIC_ROOT:-/music}
     environment:
       - PYTHONPATH=/tools
+      - MUSIC_ROOT=${MUSIC_ROOT:-/music}
+      # Individual roots only if the sibling layout ever breaks; unset falls back to
+      # MUSIC_ROOT-derived defaults, so these stay empty in the normal case.
+      - DEEMIX_ROOT=${DEEMIX_ROOT:-}
+      - LIDARR_ROOT=${LIDARR_ROOT:-}
+      - UNION_ROOT=${UNION_ROOT:-}
       - JELLYFIN_URL=http://jellyfin:8096
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
       - JELLYFIN_USER=${JELLYFIN_USER}
@@ -73,7 +78,7 @@ services:
       - 6595:6595
     volumes:
       - type: bind
-        source: /Volumes/512GB SSD/Music/Deemix
+        source: ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Deemix
         target: /downloads
       # Config (credentials, queue, logs) lives in this repo, git-ignored, never in the scanned library.
       - /Volumes/512GB SSD/jellyfin/deemix-config:/config
@@ -236,4 +241,4 @@ services:
       - ${DATA_DIR}/slskd/downloads:/downloads
       - ${DATA_DIR}/slskd/incomplete:/incomplete
       - ${DATA_DIR}/media:/data:ro
-      - /Volumes/512GB SSD/Music/Deemix:/deemix:ro
+      - ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Deemix:/deemix:ro
