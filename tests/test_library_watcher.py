@@ -262,6 +262,25 @@ class TriggerTest(WatcherTestCase):
 
         self.assertEqual(self.commands(), ["migrate", "union"])
 
+    def test_appledouble_churn_inside_dirs_does_not_trigger(self) -> None:
+        # macOS writes ._ sidecars next to real entries on non-Apple volumes; that churn bumps
+        # parent-dir mtimes on normal filesystems and must never read as a library change.
+        album = self.deemix / "A - B"
+        album.mkdir()
+        lidarr_album = self.lidarr / "X" / "Y (2000)"
+        lidarr_album.mkdir(parents=True)
+        self.clock.hooks = [
+            lambda: [(album / "._01 - Song.flac").write_bytes(b"x"),
+                     (self.deemix / "._A - B").write_bytes(b"x"),
+                     (album / ".DS_Store").write_bytes(b"x"),
+                     (lidarr_album / "._01 - Song.flac").write_bytes(b"x"),
+                     (self.lidarr / "._X").write_bytes(b"x")],
+            self.noop, self.noop]
+
+        self.run_watcher("--watch-interval", "30", "--quiet-period", "30")
+
+        self.assertEqual(self.commands(), ["migrate", "union"])
+
 
 class ModeTest(WatcherTestCase):
     def test_migrate_mode_dry_adds_dry_run(self) -> None:

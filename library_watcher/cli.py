@@ -82,58 +82,56 @@ def _subprocess_run(argv: list[str]) -> RunResult:
 @dataclass(frozen=True)
 class Fingerprint:
     """The watcher's view of the world: names + mtimes of the entries the tools act on."""
-    deemix: frozenset[tuple[str, int]]      # top-level library-root entries, tooling excluded
-    lidarr: frozenset[tuple[str, int]]      # "<Artist>" and "<Artist>/<Album>" two levels deep
+    deemix: frozenset[tuple[str, int]]      # every non-dot entry under the Deemix root
+    lidarr: frozenset[tuple[str, int]]      # every non-dot entry under the Lidarr music root
     playlists: frozenset[tuple[str, int]]   # Deemix-root playlist files (the import trigger)
     overrides: int                          # union_library_overrides mtime, -1 when absent
+
+
+def _tree_entries(root: Path, top_excludes: frozenset[str] | set[str]) -> set[tuple[str, int]]:
+    """(rel path, mtime) for every non-dot entry under `root`, dot dirs pruned.
+
+    Directories are recorded as (path, -1) — only their existence counts, never their own
+    mtime: a dir's mtime moves on ANY child write, including the ._*/.DS_Store noise macOS
+    scatters on non-Apple volumes, which every tool ignores. Adding the dir's non-dot
+    children instead means real content changes register at any depth and volume-noise
+    churn never does."""
+    seen: set[tuple[str, int]] = set()
+    base = str(root)
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".")
+                             and not (dirpath == base and d in top_excludes))
+        here = Path(dirpath)
+        for name in dirnames:
+            seen.add((nfc((here / name).relative_to(root).as_posix()), -1))
+        for name in filenames:
+            if name.startswith("."):
+                continue
+            try:
+                mtime = (here / name).lstat().st_mtime_ns
+            except OSError:
+                continue
+            seen.add((nfc((here / name).relative_to(root).as_posix()), mtime))
+    return seen
 
 
 def fingerprint(deemix: Path, lidarr: Path, overrides: Path) -> Fingerprint | None:
     """None when a source root can't be read (e.g. a dropped bind mount): an empty scan would
     look like mass deletion and union would prune every link."""
-    top: set[tuple[str, int]] = set()
-    playlists: set[tuple[str, int]] = set()
     try:
-        entries = list(os.scandir(deemix))
-        artists = list(os.scandir(lidarr))
+        if not deemix.is_dir() or not lidarr.is_dir():
+            return None
+        # scandir probe: is_dir() alone doesn't catch an unreadable root, and os.walk
+        # silently yields nothing for one — which would again look like mass deletion.
+        list(os.scandir(deemix))
+        list(os.scandir(lidarr))
+        top = _tree_entries(deemix, DEFAULT_EXCLUDES)
+        lidarr_entries = _tree_entries(lidarr, frozenset())
     except OSError:
         return None
-    for entry in entries:
-        name = nfc(entry.name)
-        # Dot entries are all tooling state (.git, .reorganize, .inventory.tsv, .DS_Store…) — the
-        # tools rewrite them every run, so watching them would self-trigger. Real entries are
-        # "Artist - Album" folders; the Lidarr walk and playlist check already skip dots too.
-        if name.startswith(".") or name in DEFAULT_EXCLUDES:
-            continue
-        try:
-            mtime = entry.stat(follow_symlinks=False).st_mtime_ns
-        except OSError:
-            continue
-        top.add((name, mtime))
-        if entry.is_file() and not name.startswith(".") and Path(name).suffix.lower() in PLAYLIST_EXTS:
-            playlists.add((name, mtime))
-
-    lidarr_entries: set[tuple[str, int]] = set()
-    for artist in artists:
-        if artist.name.startswith(".") or not artist.is_dir():
-            continue
-        try:
-            lidarr_entries.add((nfc(artist.name), artist.stat(follow_symlinks=False).st_mtime_ns))
-        except OSError:
-            pass
-        try:
-            albums = list(os.scandir(artist.path))
-        except OSError:
-            continue
-        for album in albums:
-            if album.name.startswith(".") or not album.is_dir():
-                continue
-            try:
-                lidarr_entries.add((f"{nfc(artist.name)}/{nfc(album.name)}",
-                                    album.stat(follow_symlinks=False).st_mtime_ns))
-            except OSError:
-                continue
-
+    playlists = {entry for entry in top
+                 if "/" not in entry[0] and entry[1] >= 0
+                 and Path(entry[0]).suffix.lower() in PLAYLIST_EXTS}
     try:
         overrides_mtime = overrides.stat().st_mtime_ns
     except OSError:

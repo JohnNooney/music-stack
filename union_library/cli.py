@@ -37,11 +37,14 @@ def _parser() -> argparse.ArgumentParser:
 
 def execute(plan: Plan, union: Path, dry_run: bool) -> None:
     """The only filesystem effects: symlink/unlink inside the union root."""
+    # op names are NFC; the volume can store entries in NFD and the bind-mounted view
+    # in-container compares bytes exactly — look up the real on-disk name per op.
+    real = {nfc(e.name): e.name for e in os.scandir(union)} if union.is_dir() else {}
     for op in plan.ops:
         if dry_run:
             continue
         try:
-            path = union / op.name
+            path = union / real.get(op.name, op.name)
             if isinstance(op, Link):
                 if os.path.islink(path):
                     path.unlink()

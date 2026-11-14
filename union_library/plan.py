@@ -34,6 +34,12 @@ SECTION_ORDER = [LINKED, RELINKED, AMBIGUOUS, OVERRIDDEN, LOOSE, EXCLUDED, FOREI
 DEFAULT_EXCLUDES = {"Config", "_duplicates_trash", "Deemix-trash",
                     ".artifacts", ".git", ".playlists", ".reorganize"}
 
+
+def _is_volume_noise(name: str) -> bool:
+    """macOS writes these alongside real entries on non-Apple volumes (AppleDouble `._*`
+    sidecars, `.DS_Store`). They are filesystem metadata, never library content."""
+    return name.startswith("._") or name == ".DS_Store"
+
 _YEAR = re.compile(r"\s*\(\d{4}\)\s*$")
 _DIRECTIVE = re.compile(r"^(match|prefer-deemix|keep-both)\s+(.+?)\s*=\s*([^/]+?)/(.+?)\s*$")
 
@@ -70,7 +76,8 @@ def _non_disc_music_subdirs(album_dir: str) -> list[str]:
         if not child.is_dir() or child.name.startswith(".") or _is_disc_folder(child.name):
             continue
         try:
-            if any(e.is_file() and Path(e.name).suffix.lower() in _SPLIT_AUDIO_EXTS
+            if any(e.is_file() and not e.name.startswith(".")
+                   and Path(e.name).suffix.lower() in _SPLIT_AUDIO_EXTS
                    for e in os.scandir(child.path)):
                 bad.append(nfc(child.name))
         except OSError:
@@ -192,6 +199,8 @@ def plan_union(union: Path, deemix: Path, lidarr: Path, directives: list[Directi
         if name in excludes:
             lines[EXCLUDED].append(f"{name} ({'directory' if entry.is_dir() else 'file'})")
             continue
+        if _is_volume_noise(name):
+            continue
         key = _deemix_key(name) if entry.is_dir() else None
         if key is not None:
             deemix_albums[name] = key
@@ -290,6 +299,10 @@ def plan_union(union: Path, deemix: Path, lidarr: Path, directives: list[Directi
             if dangling:
                 plan.ops.append(Unlink(name))
                 lines[PRUNED].append(f"{name} -> {os.readlink(entry.path)} (target gone)")
+            elif _is_volume_noise(name) and entry.is_symlink() and _managed(entry, (deemix, lidarr)):
+                plan.ops.append(Unlink(name))
+                lines[PRUNED].append(f"{name} -> {os.readlink(entry.path)} "
+                                     "(volume noise is never mirrored)")
             elif not name.startswith("."):
                 # dot-entries are tooling; the tool and Jellyfin both ignore them
                 kind = "symlink" if entry.is_symlink() else ("directory" if entry.is_dir() else "file")

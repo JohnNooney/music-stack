@@ -271,6 +271,41 @@ class LooseRootAndExcludesTest(UnionTestCase):
         })
         self.assertIn("Loose-root items mirrored", out)
 
+    def test_macos_noise_files_are_never_mirrored(self) -> None:
+        # macOS writes ._ sidecars and .DS_Store on non-Apple volumes — volume noise, not content.
+        self.deemix_album("A - B")
+        (self.deemix / "._A - B").write_bytes(b"junk")
+        (self.deemix / ".DS_Store").write_bytes(b"junk")
+
+        out = self.run_tool()
+
+        self.assertEqual(self.entries(), {"A - B": "../Deemix/A - B"})
+        self.assertNotIn("._A - B", out)
+        self.assertNotIn(".DS_Store", out)
+
+    def test_existing_noise_links_are_pruned(self) -> None:
+        # Links an older union_library created from ._ files it wrongly mirrored.
+        self.deemix_album("A - B")
+        (self.deemix / "._A - B").write_bytes(b"junk")
+        (self.deemix / ".DS_Store").write_bytes(b"junk")
+        os.symlink("../Deemix/._A - B", self.union / "._A - B")
+        os.symlink("../Deemix/.DS_Store", self.union / ".DS_Store")
+
+        out = self.run_tool()
+
+        self.assertEqual(self.entries(), {"A - B": "../Deemix/A - B"})
+        self.assertIn("Pruned dangling links", out)
+        self.assertIn("._A - B", out)
+
+    def test_foreign_noise_entries_are_left_alone(self) -> None:
+        # A ._ file that landed in the union root itself is untouched — it's not ours.
+        self.deemix_album("A - B")
+        (self.union / "._A - B").write_bytes(b"junk")
+
+        self.run_tool()
+
+        self.assertTrue((self.union / "._A - B").is_file())
+
     def test_internal_dirs_are_excluded_and_reported(self) -> None:
         for name in ("Config", "_duplicates_trash", ".git", ".reorganize"):
             (self.deemix / name).mkdir()
@@ -355,6 +390,17 @@ class UnionRootMaintenanceTest(UnionTestCase):
 
         self.assertEqual(self.entries(), {})
         self.assertIn("Pruned dangling links", out)
+
+    def test_subfolder_with_only_noise_files_is_not_reported_as_split(self) -> None:
+        # A subfolder holding only ._ shadows has no audio — no split warning.
+        album = self.lidarr_album("Metallica", "St. Anger (2003)")
+        (album / "Scans").mkdir()
+        (album / "Scans" / "._cover.jpg").write_bytes(b"x")
+        (album / "Scans" / "._01 - Song.flac").write_bytes(b"x")
+
+        out = self.run_tool()
+
+        self.assertNotIn("Non-disc subfolders", out)
 
     def test_non_disc_music_subfolder_is_reported(self) -> None:
         vinyl = self.lidarr_album("Metallica", "St. Anger (2003)")
