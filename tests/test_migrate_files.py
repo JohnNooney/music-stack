@@ -4,7 +4,7 @@ import unicodedata
 import unittest
 
 from reorganize_playlists.deezer import DeezerAlbum
-from tests.support import ToolTestCase
+from tests.support import ToolTestCase, unstatable_appledouble
 
 
 class MigrateFilePhaseTest(ToolTestCase):
@@ -323,6 +323,27 @@ class MigrateFilePhaseTest(ToolTestCase):
 
         self.assertEqual(self.trashed(), {"dedup_music.py", "dedup_music.log",
                                           "dedup_manifest_20260610_145954.json"})
+
+    def test_appledouble_sidecars_are_skipped_by_name_never_stat_ed(self) -> None:
+        # The watcher runs in Docker, where `._*` names EPERM on stat; macOS writes them
+        # all over the exFAT music tree. Every tool must filter them by name.
+        self.lib.flac("Playlists/Bussin/Pouya - Void.flac", title="Void", artist="Pouya",
+                      album="Five Five", track=1, isrc="P1")
+        self.deezer.add("P1", album="Five Five", artist="Pouya", track_total=12)
+        self.lib.write("Playlists/Bussin/._Pouya - Void.flac", b"mac")
+        self.lib.write("Playlists/Bussin/._cover.jpg", b"mac")
+        self.lib.write("._$uicideboy$ - Eternal Grey", b"mac")   # the reported crash site
+        self.lib.write("._Bussin.m3u", b"mac")                   # a playlist file's sidecar
+        self.lib.write(".playlists/imports/._Bussin.m3u8", b"mac")
+
+        with unstatable_appledouble():
+            self.run_tool("migrate")
+
+        self.assertTrue(self.lib.path("Pouya - Five Five/01 - Void.flac").is_file())
+        self.assertFalse(self.lib.path("Playlists").exists())   # `._*` swept with the folder
+        self.assertTrue(self.lib.path("._Bussin.m3u").is_file())  # left alone, never touched
+        self.assertFalse(any(name.startswith("._") or "/._" in name
+                             for name in self.git("ls-files").splitlines()))
 
     def small_messy_library(self) -> None:
         self.lib.flac("Daft Punk - Discovery/01 - One More Time.flac", title="One More Time", artist="Daft Punk",

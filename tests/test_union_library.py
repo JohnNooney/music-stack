@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+from tests.support import unstatable_appledouble
 from union_library.cli import main
 
 
@@ -380,6 +381,17 @@ class UnionRootMaintenanceTest(UnionTestCase):
 
         self.assertEqual(os.readlink(self.union / "A - B"), os.path.relpath(outside, self.union))
         self.assertIn("foreign symlink", out)
+
+    def test_appledouble_symlinks_are_never_stat_ed_or_misread_as_dangling(self) -> None:
+        # On the Docker bind mount `._*` names EPERM on stat, so exists() reads them as
+        # absent — a foreign `._` symlink looked dangling and was wrongly pruned.
+        self.deemix_album("A - B")
+        os.symlink("../Elsewhere/X", self.union / "._foreign")
+
+        with unstatable_appledouble():
+            self.run_tool()
+
+        self.assertIn("._foreign", self.entries())
 
     def test_dangling_dot_link_is_pruned(self) -> None:
         (self.deemix / ".gitignore").write_text("x\n")

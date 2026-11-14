@@ -29,6 +29,8 @@ GITIGNORE = """\
 !.artifacts/
 !.artifacts/*/
 !.artifacts/*/errors.txt
+# AppleDouble sidecars: pure volume noise, and un-stat-able inside containers (EPERM).
+._*
 """
 
 

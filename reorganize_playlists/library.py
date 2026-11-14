@@ -42,6 +42,18 @@ def rel_key(path: str) -> str:
     return nfc(path).casefold()
 
 
+def is_appledouble(name: str) -> bool:
+    """AppleDouble `._*` sidecars macOS writes on non-Apple volumes. They can't be stat'ed on
+    Docker-Desktop bind mounts (EPERM — open/rename/unlink still work), so they must be
+    filtered by name before any stat call."""
+    return name.startswith("._")
+
+
+def is_volume_noise(name: str) -> bool:
+    """`._*` AppleDouble sidecars and `.DS_Store` — filesystem metadata, never library content."""
+    return is_appledouble(name) or name == ".DS_Store"
+
+
 class Location(Enum):
     ALBUM = "album folder"
     PLAYLIST = "legacy playlist folder"

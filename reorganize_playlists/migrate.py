@@ -10,7 +10,7 @@ from reorganize_playlists.deezer import DeezerAlbum, DeezerClient
 from reorganize_playlists import playlist_file
 from reorganize_playlists.library import (
     AUDIO_EXTS, DEEMIX_CONFIG_DIR, LEGACY_PLAYLISTS_DIR, PLAYLIST_EXTS, SIDECAR_EXTS,
-    AudioFile, Location, Song, nfc, rel_key, song_key,
+    AudioFile, Location, Song, is_appledouble, nfc, rel_key, song_key,
 )
 from reorganize_playlists.executor import Executor
 from reorganize_playlists.progress import Progress
@@ -213,6 +213,8 @@ def _clear_folder(root: Path, folder: Path, plan: Plan) -> None:
     report = plan.report
     for path in sorted(folder.iterdir()):
         rel = nfc(path.relative_to(root).as_posix())
+        if is_appledouble(path.name):
+            continue  # un-stat-able on bind-mounted volumes; remove_dir sweeps it away
         if path.is_dir():
             report.add("Left in place (unexpected; folder kept)", rel + "/")
         elif _is_handled_audio(path):
@@ -238,16 +240,20 @@ def _clear_folder(root: Path, folder: Path, plan: Plan) -> None:
 
 
 def _contains_audio(folder: Path) -> bool:
-    return any(p.suffix.lower() in AUDIO_EXTS for p in folder.rglob("*"))
+    return any(not p.name.startswith(".") and p.suffix.lower() in AUDIO_EXTS
+               for p in folder.rglob("*"))
 
 
 def _plan_housekeeping(root: Path, plan: Plan) -> None:
     legacy = root / LEGACY_PLAYLISTS_DIR
     if legacy.is_dir():
-        for folder in sorted(p for p in legacy.iterdir() if p.is_dir()):
+        for folder in sorted(p for p in legacy.iterdir()
+                             if not is_appledouble(p.name) and p.is_dir()):
             _clear_folder(root, folder, plan)
             plan.ops.append(RemoveDir(nfc(folder.relative_to(root).as_posix())))
         for path in legacy.iterdir():
+            if is_appledouble(path.name):
+                continue
             if path.is_file():
                 if path.name in JUNK_NAMES:
                     plan.ops.append(Trash(path))
@@ -256,25 +262,25 @@ def _plan_housekeeping(root: Path, plan: Plan) -> None:
         plan.ops.append(RemoveDir(LEGACY_PLAYLISTS_DIR))
 
     for folder in sorted(root.iterdir()):
-        if (not folder.is_dir() or folder.name.startswith(".")
+        if (folder.name.startswith(".") or not folder.is_dir()
                 or folder.name in (LEGACY_PLAYLISTS_DIR, DEEMIX_CONFIG_DIR) or _contains_audio(folder)):
             continue
-        contents = list(folder.iterdir())
-        if contents and all(p.is_file() and p.name in ARTIFACT_NAMES | JUNK_NAMES for p in contents):
+        contents = [p for p in folder.iterdir() if not is_appledouble(p.name)]
+        if not contents or all(p.is_file() and p.name in ARTIFACT_NAMES | JUNK_NAMES for p in contents):
             _clear_folder(root, folder, plan)
             plan.ops.append(RemoveDir(nfc(folder.name)))
             plan.report.add("Empty album folders removed", nfc(folder.name))
 
     for path in sorted(root.iterdir()):
-        if path.is_file() and (path.name in ("dedup_music.py", "dedup_music.log")
-                               or (path.name.startswith("dedup_manifest_") and path.suffix == ".json")):
+        if (path.name in ("dedup_music.py", "dedup_music.log")
+                or (path.name.startswith("dedup_manifest_") and path.suffix == ".json")) and path.is_file():
             plan.ops.append(Trash(path))
             plan.report.add("Retired dedup_music.py files trashed", path.name)
 
 
 def root_playlist_files(root: Path) -> list[Path]:
     return sorted(p for p in root.iterdir()
-                  if p.is_file() and p.suffix.lower() in PLAYLIST_EXTS and not p.name.startswith("."))
+                  if not p.name.startswith(".") and p.suffix.lower() in PLAYLIST_EXTS and p.is_file())
 
 
 def _plan_root_playlists(root: Path, plan: Plan) -> None:

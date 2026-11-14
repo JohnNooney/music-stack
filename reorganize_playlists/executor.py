@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from reorganize_playlists.jellyfin import JellyfinClient
+from reorganize_playlists.library import is_volume_noise
 
 
 class Executor:
@@ -87,6 +88,11 @@ class Executor:
         if self.dry_run:
             return True
         try:
+            # Volume noise can't be stat'ed on bind mounts (._*) or is junk macOS rewrites
+            # constantly (.DS_Store) — unlink it so rmdir can succeed. Unrecoverable anyway.
+            for entry in path.iterdir():
+                if is_volume_noise(entry.name):
+                    entry.unlink()
             path.rmdir()
         except OSError:
             return False

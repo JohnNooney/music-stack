@@ -10,16 +10,35 @@ import subprocess
 import tempfile
 import unicodedata
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+import unittest.mock
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, Iterator
 
 from reorganize_playlists.cli import main
 from reorganize_playlists.deezer import DeezerAlbum, DeezerTrack
 from reorganize_playlists.jellyfin import PlaylistEntry, PlaylistInfo, ScanStatus
 
 JPEG = b"\xff\xd8\xff\xe0" + b"fake-jpeg" + b"\xff\xd9"
+
+
+@contextmanager
+def unstatable_appledouble() -> Iterator[None]:
+    """Simulate a Docker-Desktop bind mount: `._*` names list via scandir but stat/lstat EPERM."""
+    real_stat, real_lstat = os.stat, os.lstat
+
+    def unstatable(fn: Callable[..., Any]) -> Callable[..., Any]:
+        def wrapper(path: Any, *args: Any, **kwargs: Any) -> Any:
+            if isinstance(path, (str, os.PathLike)) \
+                    and os.path.basename(os.fspath(path)).startswith("._"):
+                raise PermissionError(1, "Operation not permitted", os.fspath(path))
+            return fn(path, *args, **kwargs)
+        return wrapper
+
+    with unittest.mock.patch("os.stat", unstatable(real_stat)), \
+            unittest.mock.patch("os.lstat", unstatable(real_lstat)):
+        yield
 
 DEEMIX_CONFIG = {
     "downloadLocation": "/downloads/",

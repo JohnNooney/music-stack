@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from reorganize_playlists.library import AUDIO_EXTS, nfc, normalise_words
+from reorganize_playlists.library import AUDIO_EXTS, is_volume_noise, nfc, normalise_words
 from reorganize_playlists.report import Report
 
 LINKED = "Linked (new)"
@@ -34,11 +34,6 @@ SECTION_ORDER = [LINKED, RELINKED, AMBIGUOUS, OVERRIDDEN, LOOSE, EXCLUDED, FOREI
 DEFAULT_EXCLUDES = {"Config", "_duplicates_trash", "Deemix-trash",
                     ".artifacts", ".git", ".playlists", ".reorganize"}
 
-
-def _is_volume_noise(name: str) -> bool:
-    """macOS writes these alongside real entries on non-Apple volumes (AppleDouble `._*`
-    sidecars, `.DS_Store`). They are filesystem metadata, never library content."""
-    return name.startswith("._") or name == ".DS_Store"
 
 _YEAR = re.compile(r"\s*\(\d{4}\)\s*$")
 _DIRECTIVE = re.compile(r"^(match|prefer-deemix|keep-both)\s+(.+?)\s*=\s*([^/]+?)/(.+?)\s*$")
@@ -199,7 +194,7 @@ def plan_union(union: Path, deemix: Path, lidarr: Path, directives: list[Directi
         if name in excludes:
             lines[EXCLUDED].append(f"{name} ({'directory' if entry.is_dir() else 'file'})")
             continue
-        if _is_volume_noise(name):
+        if is_volume_noise(name):
             continue
         key = _deemix_key(name) if entry.is_dir() else None
         if key is not None:
@@ -294,15 +289,17 @@ def plan_union(union: Path, deemix: Path, lidarr: Path, directives: list[Directi
     # --- Existing union entries: keep, retarget, prune or leave foreign ---
     for entry in _scandir(union) if union.is_dir() else []:
         name = nfc(entry.name)
-        dangling = entry.is_symlink() and not os.path.exists(entry.path)
         if name not in desired:
-            if dangling:
+            # `._*` entries can't even be stat'ed on bind-mounted volumes — exists() reads
+            # them as absent and would misreport a live symlink as dangling; skip by name.
+            if is_volume_noise(name):
+                if entry.is_symlink() and _managed(entry, (deemix, lidarr)):
+                    plan.ops.append(Unlink(name))
+                    lines[PRUNED].append(f"{name} -> {os.readlink(entry.path)} "
+                                         "(volume noise is never mirrored)")
+            elif entry.is_symlink() and not os.path.exists(entry.path):
                 plan.ops.append(Unlink(name))
                 lines[PRUNED].append(f"{name} -> {os.readlink(entry.path)} (target gone)")
-            elif _is_volume_noise(name) and entry.is_symlink() and _managed(entry, (deemix, lidarr)):
-                plan.ops.append(Unlink(name))
-                lines[PRUNED].append(f"{name} -> {os.readlink(entry.path)} "
-                                     "(volume noise is never mirrored)")
             elif not name.startswith("."):
                 # dot-entries are tooling; the tool and Jellyfin both ignore them
                 kind = "symlink" if entry.is_symlink() else ("directory" if entry.is_dir() else "file")

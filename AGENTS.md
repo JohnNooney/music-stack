@@ -17,6 +17,7 @@ Test only through `main(argv, deezer=FakeDeezer, jellyfin=FakeJellyfin)` (`reorg
 ## Gotchas
 
 - macOS volumes are case- and normalisation-insensitive: `Deemix/` and `deemix/` collide in a temp dir, and NFC/NFD names refer to the same file.
+- `._*` AppleDouble sidecars (macOS writes them everywhere on the exFAT trees) cannot be `stat`/`lstat`ed inside containers on Docker-Desktop bind mounts — EPERM — though `scandir`, `open`, `rename` and `unlink` all work. Filter them by name (`is_appledouble`/`is_volume_noise` in `library.py`) before any stat call; `git add -A` also fatals on them, so the library `.gitignore` template carries `._*`.
 - python.org Python on macOS has no CA bundle; `deezer.py` falls back to `/etc/ssl/cert.pem`.
 - `/Volumes/512GB SSD/Music` is the real music tree (compose's `MUSIC_DIR`). Every tool's path defaults come from `MUSIC_ROOT`/`DEEMIX_ROOT`/`LIDARR_ROOT`/`UNION_ROOT` env vars — flags override. Live runs move real files, so dry-run first.
 - The routed services share gluetun's netns: they reach each other on `localhost` (Prowlarr→FlareSolverr is `http://localhost:8191`), their host ports publish on `gluetun`, their `*.internal` aliases live on gluetun's `networks:` entry, and routed→`*.internal` resolution is reliable only because gluetun uses Docker DNS (`DNS_ADDRESS=127.0.0.11`). A routed service can't carry `ports:`/`networks:`/aliases — read spec 0005 before touching compose networking.
