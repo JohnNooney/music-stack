@@ -25,6 +25,10 @@ cache/
 !/slskd/slskd.yml.example
 /soularr/*
 !/soularr/config.ini.example
+# Tailscale sidecar: tailscaled state + the live serve.json (its Web keys embed
+# the real tailnet FQDN). Only the template is tracked.
+/tailscale/*
+!/tailscale/serve.json.example
 # In case a local data/ dir is ever used instead of an external DATA_DIR
 /data/
 

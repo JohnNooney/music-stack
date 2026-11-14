@@ -28,6 +28,10 @@ here.
    - `MUSIC_DIR` — the host tree holding `Deemix/`, `Lidarr/` and `Jellyfin/`
      (the union root), mounted into `library-watcher` at `MUSIC_ROOT`
      (default `/music`; leave unset unless relocating the mount).
+   - `OPENVPN_USER`/`OPENVPN_PASSWORD` — IPVanish account email + password;
+     gluetun won't start (and the routed services never launch) without them.
+   - `TS_AUTHKEY` — Tailscale auth key; needs the admin-console work in
+     [vpn-and-tailscale-access.md](vpn-and-tailscale-access.md) steps 2–3.
    - Watcher knobs are optional — `WATCH_INTERVAL_S`, `QUIET_PERIOD_S`,
      `RETRY_COOLDOWN_S`, `MIGRATE_MODE`, `IMPORT_MODE` all have compose
      defaults; add them to `.env` only to override.
@@ -36,12 +40,17 @@ here.
    git-ignored and were never committed)*. On a fresh clone the dirs don't
    exist, so create them and copy the templates:
    ```bash
-   mkdir -p soularr slskd lidarr prowlarr transmission
+   mkdir -p soularr slskd lidarr prowlarr transmission tailscale
    cp soularr/config.ini.example soularr/config.ini
    cp slskd/slskd.yml.example slskd/slskd.yml
+   cp tailscale/serve.json.example tailscale/serve.json
    ```
    In `soularr/config.ini`, set `[Slskd] api_key` = your `SLSKD_API_KEY` now;
-   `[Lidarr] api_key` comes in step 8.
+   `[Lidarr] api_key` comes in step 8. In `tailscale/serve.json`, replace the
+   `<TS_HOSTNAME>.<tailnet>.ts.net` placeholder with the real tailnet FQDN
+   ([vpn-and-tailscale-access.md](vpn-and-tailscale-access.md) step 4) — if the
+   file is missing, Docker bind-mounts a *directory* there instead and the
+   tailscale container fails.
 
 4. **`DATA_DIR` layout.** Docker creates missing folders on `up`, or:
    ```bash
@@ -53,7 +62,10 @@ here.
    docker compose up -d
    ```
    Soularr will complain until `config.ini` has the Lidarr key — fixed in
-   step 8. slskd should show *Connected* to `vps.slsknet.org` in its web UI
+   step 8. gluetun must reach `healthy` (`docker inspect gluetun --format
+   '{{.State.Health.Status}}'`) before prowlarr/slskd/flaresolverr/transmission
+   start — without valid `OPENVPN_*` creds they wait forever. slskd should
+   show *Connected* to `vps.slsknet.org` in its web UI
    (http://localhost:5030) since its credentials came from `.env`.
    `library-watcher` builds from `docker/library-watcher/` on first `up` and
    immediately runs one `migrate` + `union_library` pass (see `docker logs
@@ -64,6 +76,8 @@ here.
    - Lidarr: root folder `/data/media/music`, copy the API key (Settings →
      General), add Transmission as download client, widen Metadata Profiles.
    - Prowlarr: add indexers, then Settings → Apps → Lidarr with that API key.
+     For indexers using the FlareSolverr proxy, set its Host to
+     `http://localhost:8191` — they share gluetun's netns.
    - Transmission: stop, edit `transmission/settings.json` (download/incomplete/
      watch dirs), start. *(this machine: already applied.)*
    - Slskd: shares/limits are already in `slskd.yml` (seeded in step 3);
@@ -97,7 +111,7 @@ here.
 
 ## Done checklist
 
-- [ ] `docker compose ps` shows all 9 services running.
+- [ ] `docker compose ps` shows all 11 services running.
 - [ ] `docker logs library-watcher` shows its startup `migrate` + `union_library` run and polls, not errors.
 - [ ] slskd web UI: *Connected* to `vps.slsknet.org`; shares list `/data/music` and `/deemix`.
 - [ ] `docker logs soularr` shows poll cycles (grabs or "nothing wanted"), not 401/403.
@@ -105,7 +119,7 @@ here.
 - [ ] `python3 -m union_library --dry-run` plans links from both source trees.
 - [ ] Jellyfin Music library scans `/media` and shows both Deemix and Lidarr content.
 - [ ] `python3 -m reorganize_playlists import --dry-run` runs (needs `JELLYFIN_API_KEY`).
-- [ ] `git status` shows no new tracked files under `lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/`, and `.env` is untracked.
+- [ ] `git status` shows no new tracked files under `lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/`, `tailscale/` (except `tailscale/serve.json.example`), and `.env` is untracked.
 
 ## Notes
 

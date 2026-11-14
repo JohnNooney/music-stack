@@ -85,22 +85,84 @@ services:
     restart: 'unless-stopped'
 
   # --- Lidarr stack (imported from ../lidarr-stack) ---
-  # These five run as ${PUID}:${PGID} from .env (502:20 on this host). Inter-service
-  # addresses use the *.internal network aliases below; plain service names resolve too.
+  # The arr services run as ${PUID}:${PGID} from .env (502:20 on this host);
+  # flaresolverr, gluetun and tailscale run as their image users. Inter-service
+  # addresses use the *.internal network aliases — the routed services' aliases
+  # live on gluetun below; plain service names resolve too.
+  #
+  # prowlarr, slskd, flaresolverr and transmission are "routed": they share
+  # gluetun's network namespace so all their traffic egresses through the
+  # IPVanish tunnel (spec 0005 —
+  # docs/explanation/specs/0005-gluetun-vpn-tailscale.md and
+  # docs/explanation/research/gluetun-vpn-tailscale-research.md). Their ports
+  # are published on gluetun, not on the services themselves.
 
-  prowlarr:
-    container_name: prowlarr
-    hostname: prowlarr.internal
+  # Gluetun: IPVanish OpenVPN client. The routed services join this netns and
+  # reach each other on localhost inside it; their kill switch is gluetun's
+  # firewall. IPVanish forwards nothing inbound, so the peer ports below are
+  # LAN-reach only. The image ships a HEALTHCHECK, so service_healthy below
+  # waits for the tunnel, not just container start.
+  gluetun:
+    container_name: gluetun
     networks:
       default:
         aliases:
+          - gluetun.internal
+          # Aliases moved off the routed services (a routed service can't carry
+          # network aliases) so soularr/config.ini and Lidarr's download-client
+          # URLs keep resolving unmodified.
           - prowlarr.internal
+          - slskd.internal
+          - transmission.internal
+          - flaresolverr.internal
+    # Pinned: :v3 is the rolling stable line per the gluetun wiki; :latest tracks
+    # the master edge. Re-check the research doc before upgrading.
+    image: qmcgaw/gluetun:v3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=ipvanish
+      - VPN_TYPE=openvpn                        # default; explicit for clarity
+      - OPENVPN_USER=${OPENVPN_USER}            # IPVanish account email — in .env
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}    # IPVanish account password — in .env
+      - SERVER_COUNTRIES=${VPN_SERVER_COUNTRIES:-Netherlands}
+      # Docker's embedded DNS, so routed apps still resolve non-routed service
+      # names (lidarr.internal for Prowlarr's app sync). Trades away gluetun's
+      # Unbound/DoT + blocklists; DNS_KEEP_NAMESERVER is a documented leak risk.
+      - DNS_ADDRESS=127.0.0.11
+      - TZ=${TZ}
+      # - UPDATER_PERIOD=168h                   # optional: refresh IPVanish server list
+      # - FIREWALL_OUTBOUND_SUBNETS=192.168.178.0/24  # only if a routed app must
+      #                                             # initiate to physical LAN IPs
+    ports:
+      # Every port a routed service used to publish lives here:
+      - "9696:9696"            # prowlarr UI
+      - "5030:5030"            # slskd web UI (HTTP)
+      - "5031:5031"            # slskd web UI (HTTPS, self-signed)
+      - "50300:50300"          # slskd Soulseek listen port (LAN-side only —
+                               # IPVanish accepts nothing inbound)
+      - "9091:9091"            # transmission UI/RPC
+      - "51413:51413"          # transmission peer port (LAN-side only)
+      - "51413:51413/udp"
+      - "8191:8191"            # flaresolverr API — LAN/host reach; prowlarr uses
+                               # localhost:8191 inside the shared netns
+      # - "8000:8000"          # gluetun control server (unused by the stack)
+
+  prowlarr:
+    container_name: prowlarr
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
     image: ghcr.io/hotio/prowlarr:latest
     restart: unless-stopped
     logging:
       driver: json-file
-    ports:
-      - "9696:9696"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -115,17 +177,14 @@ services:
   # The image runs as a fixed flaresolverr user; PUID/PGID are not supported.
   flaresolverr:
     container_name: flaresolverr
-    hostname: flaresolverr.internal
-    networks:
-      default:
-        aliases:
-          - flaresolverr.internal
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
     image: ghcr.io/flaresolverr/flaresolverr:latest
     restart: unless-stopped
     logging:
       driver: json-file
-    ports:
-      - "8191:8191"
     environment:
       - LOG_LEVEL=info   # set to debug when troubleshooting solves
       - TZ=${TZ}
@@ -157,19 +216,14 @@ services:
 
   transmission:
     container_name: transmission
-    hostname: transmission.internal
-    networks:
-      default:
-        aliases:
-          - transmission.internal
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
     image: lscr.io/linuxserver/transmission:latest
     restart: unless-stopped
     logging:
       driver: json-file
-    ports:
-      - "9091:9091"
-      - "51413:51413"
-      - "51413:51413/udp"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -211,17 +265,12 @@ services:
 
   slskd:
     container_name: slskd
-    hostname: slskd.internal
-    networks:
-      default:
-        aliases:
-          - slskd.internal
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
     image: slskd/slskd
     restart: unless-stopped
-    ports:
-      - "5030:5030"
-      - "5031:5031"
-      - "50300:50300"
     logging:
       driver: json-file
     user: "${PUID}:${PGID}"
@@ -242,3 +291,33 @@ services:
       - ${DATA_DIR}/slskd/incomplete:/incomplete
       - ${DATA_DIR}/media:/data:ro
       - ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Deemix:/deemix:ro
+
+  # Tailscale sidecar: serves every web UI to the tailnet over HTTPS per
+  # tailscale/serve.json (spec 0005 — docs/explanation/specs/0005-gluetun-vpn-tailscale.md
+  # and docs/explanation/research/gluetun-vpn-tailscale-research.md). It keeps its
+  # own netns on the default network — routing it through gluetun would force
+  # tailscaled's control/DERP/peer traffic through IPVanish and kill direct
+  # tailnet paths. Routed apps are proxied via gluetun:<port>, non-routed ones
+  # by service name.
+  tailscale:
+    container_name: tailscale
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}                # reusable, ephemeral-OK key tagged
+                                                # tag:container — in .env
+      - TS_STATE_DIR=/var/lib/tailscale         # persisted below; without it the
+                                                # node re-registers every recreate
+      - TS_HOSTNAME=musicstack
+      - TS_SERVE_CONFIG=/config/serve.json
+      # Tagged nodes don't expire — an untagged node's key dies on the tailnet
+      # expiry schedule and remote access silently goes dark.
+      - TS_EXTRA_ARGS=--advertise-tags=tag:container
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+      # Live serve.json is git-ignored (its Web keys embed the real tailnet
+      # FQDN); copy serve.json.example and fill it in — see
+      # docs/how-to/vpn-and-tailscale-access.md.
+      - ./tailscale/serve.json:/config/serve.json:ro

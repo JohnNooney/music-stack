@@ -16,6 +16,7 @@ walkthrough.
 | [cut-over-union-root.md](how-to/cut-over-union-root.md) | Point Jellyfin at the union root for the first time |
 | [migrate-library.md](how-to/migrate-library.md) | One-off move out of legacy playlist folders, with the done checklist |
 | [upgrade-images.md](how-to/upgrade-images.md) | Bump the pinned Jellyfin/Deemix images safely |
+| [vpn-and-tailscale-access.md](how-to/vpn-and-tailscale-access.md) | Put the download services behind IPVanish and reach the UIs over Tailscale |
 
 ## Reference
 
