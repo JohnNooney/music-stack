@@ -392,5 +392,28 @@ class MigrateFilePhaseTest(ToolTestCase):
                       out)
 
 
+class EnvDefaultsTest(ToolTestCase):
+    def _loose_song(self) -> None:
+        self.lib.flac("Cymande - Dove.flac", title="Dove", artist="Cymande",
+                      album="Listen", albumartist="Zashawn", track=6, isrc="GB8A91200030")
+        self.deezer.add("GB8A91200030", album="Listen", artist="Zashawn", track_total=12)
+
+    def test_deemix_root_env_supplies_the_library_root(self) -> None:
+        self.set_env("DEEMIX_ROOT", str(self.root))
+        self._loose_song()
+
+        self.run_tool("migrate", "--dry-run", paths=False)
+
+        self.assertIn("Zashawn - Listen", self.output)
+
+    def test_music_root_env_supplies_the_library_root(self) -> None:
+        self.set_env("MUSIC_ROOT", str(self.root.parent))
+        self._loose_song()
+
+        self.run_tool("migrate", "--dry-run", paths=False)
+
+        self.assertIn("Zashawn - Listen", self.output)
+
+
 if __name__ == "__main__":
     unittest.main()

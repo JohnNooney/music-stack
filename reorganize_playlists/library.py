@@ -18,6 +18,20 @@ LEGACY_PLAYLISTS_DIR = "Playlists"
 DEEMIX_CONFIG_DIR = "Config"
 FORMAT_RANK = {".flac": 0, ".mp3": 1}
 
+# Built-in fallback for the music tree base on this host (the compose MUSIC_DIR source);
+# MUSIC_ROOT and the per-root env vars override it — see .env.example.
+MUSIC = Path("/Volumes/512GB SSD/Music")
+
+
+def env_path(name: str, default: Path) -> Path:
+    raw = os.environ.get(name)
+    return Path(raw) if raw else default
+
+
+def music_root() -> Path:
+    """Base of the Deemix/Lidarr/Jellyfin sibling trees (env MUSIC_ROOT)."""
+    return env_path("MUSIC_ROOT", MUSIC)
+
 
 def nfc(text: str) -> str:
     return unicodedata.normalize("NFC", text)

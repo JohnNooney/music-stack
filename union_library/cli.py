@@ -8,24 +8,25 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from reorganize_playlists.library import nfc
+from reorganize_playlists.library import env_path, music_root, nfc
 from union_library.plan import (
     DEFAULT_EXCLUDES, FAILED, NEXT_STEP, Link, Plan, Unlink, parse_overrides, plan_union,
 )
 
 REPO = Path(__file__).resolve().parent.parent
-MUSIC = Path("/Users/john/Music")
 STATE_DIR = ".union"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="union_library", description=__doc__)
-    parser.add_argument("--union", type=Path, default=MUSIC / "Jellyfin",
-                        help="union root (default: %(default)s)")
-    parser.add_argument("--deemix", type=Path, default=MUSIC / "Deemix",
-                        help="Deemix library root (default: %(default)s)")
-    parser.add_argument("--lidarr", type=Path, default=MUSIC / "Lidarr" / "media" / "music",
-                        help="Lidarr music root (default: %(default)s)")
+    music = music_root()
+    parser.add_argument("--union", type=Path, default=env_path("UNION_ROOT", music / "Jellyfin"),
+                        help="union root (env UNION_ROOT, default: %(default)s)")
+    parser.add_argument("--deemix", type=Path, default=env_path("DEEMIX_ROOT", music / "Deemix"),
+                        help="Deemix library root (env DEEMIX_ROOT, default: %(default)s)")
+    parser.add_argument("--lidarr", type=Path,
+                        default=env_path("LIDARR_ROOT", music / "Lidarr" / "media" / "music"),
+                        help="Lidarr music root (env LIDARR_ROOT, default: %(default)s)")
     parser.add_argument("--overrides", type=Path, default=REPO / "union_library_overrides",
                         help="overrides file (default: %(default)s)")
     parser.add_argument("--exclude", action="append", default=[], metavar="NAME",

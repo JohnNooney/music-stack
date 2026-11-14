@@ -3,7 +3,7 @@
 A command-line tool that keeps the Deemix library in album folders and keeps the Jellyfin playlists in step with it. It uses only the Python standard library (Python ≥ 3.11). Terms follow [CONTEXT.md](../../CONTEXT.md).
 
 ```bash
-cd /Users/john/Docker/jellyfin
+cd "/Volumes/512GB SSD/jellyfin"
 python3 -m reorganize_playlists [global options] <command> [options]
 ```
 
@@ -11,10 +11,12 @@ python3 -m reorganize_playlists [global options] <command> [options]
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--root PATH` | `/Users/john/Music/Deemix` | Library root |
+| `--root PATH` | env `DEEMIX_ROOT`, else `$MUSIC_ROOT/Deemix` | Library root |
 | `--trash PATH` | `<root>-trash` | Trash, which must be outside the root. Each run gets `<trash>/<run id>/`, and paths inside mirror the library |
 | `--env PATH` | `<repo>/.env` | `JELLYFIN_URL`, `JELLYFIN_API_KEY`, `JELLYFIN_USER`, `JELLYFIN_MEDIA_ROOT` (see `.env.example`) |
 | `--deemix-config PATH` | `<repo>/deemix-config/config.json`, else `<root>/Config/config.json` | Templates, padding and replacer for the Deemix path |
+
+`MUSIC_ROOT` itself defaults to `/Volumes/512GB SSD/Music` (the compose `MUSIC_DIR` source). Flags beat env vars, env vars beat the default.
 
 ## Commands
 

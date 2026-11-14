@@ -16,7 +16,7 @@ from reorganize_playlists.jellyfin import (
     HttpJellyfinClient, JellyfinClient, JellyfinUnavailable, load_settings, require_api_key,
 )
 from reorganize_playlists.importer import run_import
-from reorganize_playlists.library import AudioFile, group_songs, scan
+from reorganize_playlists.library import AudioFile, env_path, group_songs, music_root, scan
 from reorganize_playlists.migrate import (
     CONFLICTS, MOVES, TRASHED, Move, Plan, RemoveDir, Rewrite, Trash, Write, plan_files, self_check,
 )
@@ -28,7 +28,6 @@ from reorganize_playlists.retag import (
 from reorganize_playlists.tags import write_tags
 
 REPO = Path(__file__).resolve().parent.parent
-DEFAULT_ROOT = Path("/Users/john/Music/Deemix")
 STATE_DIR = ".reorganize"
 
 
@@ -77,7 +76,9 @@ class Context:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="reorganize_playlists", description=__doc__)
-    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="library root (default: %(default)s)")
+    parser.add_argument("--root", type=Path,
+                        default=env_path("DEEMIX_ROOT", music_root() / "Deemix"),
+                        help="library root (env DEEMIX_ROOT, default: %(default)s)")
     parser.add_argument("--trash", type=Path, help="trash folder outside the library (default: <root>-trash)")
     parser.add_argument("--env", type=Path, default=REPO / ".env", help="file with JELLYFIN_* settings")
     parser.add_argument("--deemix-config", type=Path, help="Deemix config.json (default: repo deemix-config/)")

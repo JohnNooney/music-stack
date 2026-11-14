@@ -23,13 +23,12 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from reorganize_playlists.jellyfin import HttpJellyfinClient, JellyfinClient, load_settings
-from reorganize_playlists.library import PLAYLIST_EXTS, nfc
+from reorganize_playlists.library import PLAYLIST_EXTS, env_path, music_root, nfc
 from union_library.plan import (
     AMBIGUOUS, DEFAULT_EXCLUDES, LINKED, LOOSE, OVERRIDDEN, PRUNED, RELINKED,
 )
 
 REPO = Path(__file__).resolve().parent.parent
-MUSIC = Path("/Users/john/Music")
 STATE_DIR = ".reorganize"
 STATE_FILE = "watcher-state.json"
 
@@ -217,20 +216,15 @@ def _env_seconds(name: str, default: float) -> float:
         raise SystemExit(2)
 
 
-def _env_path(name: str, default: Path) -> Path:
-    raw = os.environ.get(name)
-    return Path(raw) if raw else default
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="library_watcher", description=__doc__)
-    music = _env_path("MUSIC_ROOT", MUSIC)
-    parser.add_argument("--deemix", type=Path, default=_env_path("DEEMIX_ROOT", music / "Deemix"),
+    music = music_root()
+    parser.add_argument("--deemix", type=Path, default=env_path("DEEMIX_ROOT", music / "Deemix"),
                         help="Deemix library root (env DEEMIX_ROOT, default: %(default)s)")
     parser.add_argument("--lidarr", type=Path,
-                        default=_env_path("LIDARR_ROOT", music / "Lidarr" / "media" / "music"),
+                        default=env_path("LIDARR_ROOT", music / "Lidarr" / "media" / "music"),
                         help="Lidarr music root (env LIDARR_ROOT, default: %(default)s)")
-    parser.add_argument("--union", type=Path, default=_env_path("UNION_ROOT", music / "Jellyfin"),
+    parser.add_argument("--union", type=Path, default=env_path("UNION_ROOT", music / "Jellyfin"),
                         help="union root (env UNION_ROOT, default: %(default)s)")
     parser.add_argument("--overrides", type=Path, default=REPO / "union_library_overrides",
                         help="union overrides file (default: %(default)s)")

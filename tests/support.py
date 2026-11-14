@@ -310,6 +310,10 @@ class ToolTestCase(unittest.TestCase):
             os.environ[key] = value
         self.output = ""
 
+    def set_env(self, key: str, value: str) -> None:
+        self.addCleanup(self._restore_env, key, os.environ.get(key))
+        os.environ[key] = value
+
     @staticmethod
     def _restore_env(key: str, old: str | None) -> None:
         if old is None:
@@ -317,9 +321,10 @@ class ToolTestCase(unittest.TestCase):
         else:
             os.environ[key] = old
 
-    def run_tool(self, *args: str, real_jellyfin: bool = False, expect: int = 0) -> str:
+    def run_tool(self, *args: str, paths: bool = True, real_jellyfin: bool = False,
+                 expect: int = 0) -> str:
         """Run the tool in-process; `real_jellyfin` makes it build its HTTP client from `.env`."""
-        argv = ["--root", str(self.root), "--trash", str(self.trash),
+        argv = (["--root", str(self.root), "--trash", str(self.trash)] if paths else []) + [
                 "--deemix-config", str(self.deemix_config), "--env", str(self.env), *args]
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):

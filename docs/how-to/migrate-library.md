@@ -2,14 +2,14 @@
 
 Moves every song out of the legacy playlist folders into album folders and recreates the playlists as Jellyfin playlists owned by you. Background: [ADR 0001](../explanation/adr/0001-songs-in-album-folders-jellyfin-owns-playlists.md), [ADR 0002](../explanation/adr/0002-deemix-structure-playlist-mode-and-exact-deemix-paths.md), [ADR 0003](../explanation/adr/0003-no-git-for-audio-apfs-clone-and-text-only-git.md). Tool usage: [reorganize_playlists.md](../reference/reorganize_playlists.md).
 
-Run every command from `/Users/john/Docker/jellyfin`. Do the steps **in order**.
+Run every command from `"/Volumes/512GB SSD/jellyfin"`. Do the steps **in order**.
 
 ## Steps
 
 1. **Back up with an APFS clone.** This is mandatory, because there is no other backup.
    ```bash
    docker compose stop deemix 2>/dev/null; docker compose stop jellyfin
-   cp -c -R /Users/john/Music/Deemix /Users/john/Music/Deemix-backup-$(date +%Y%m%d)
+   cp -c -R "$MUSIC_DIR/Deemix" "$MUSIC_DIR/Deemix-backup-$(date +%Y%m%d)"
    ```
    `-c` clones the files (copy-on-write), so this takes seconds and almost no space. The clone lives outside the library root.
 2. **Keep Jellyfin stopped.** Real-time monitoring must not react to thousands of moves. The tool refuses to run while Jellyfin is scanning and warns while it is running. Without an API key it cannot check, so make sure yourself: `docker compose ps`.
@@ -17,7 +17,7 @@ Run every command from `/Users/john/Docker/jellyfin`. Do the steps **in order**.
    ```bash
    python3 -m reorganize_playlists migrate --dry-run
    ```
-4. **Review the report** (`~/Music/Deemix/.reorganize/runs/<id>/report.txt`). Look closely at:
+4. **Review the report** (`$MUSIC_DIR/Deemix/.reorganize/runs/<id>/report.txt`). Look closely at:
    - *Deezer network errors*: must be absent. Otherwise fix the network or TLS problem and repeat step 3.
    - *Conflicts*: songs that stay in `Playlists/`, so that folder will remain.
    - *Deezer lookup failed*: paths built from tags, where Deemix parity is uncertain.
@@ -50,22 +50,22 @@ Run every command from `/Users/john/Docker/jellyfin`. Do the steps **in order**.
 ## Done checklist
 
 - [ ] The file-phase report says *Self-check passed* (unique songs before = after; every trashed copy has a canonical copy).
-- [ ] No audio outside album folders: `ls ~/Music/Deemix` shows no `Playlists/` (unless conflicts were reported) and no loose `.flac`/`.mp3`.
+- [ ] No audio outside album folders: `ls "$MUSIC_DIR/Deemix"` shows no `Playlists/` (unless conflicts were reported) and no loose `.flac`/`.mp3`.
 - [ ] Jellyfin shows no "Playlists" artist and none of the 37 pseudo-albums.
 - [ ] 37 playlists, all editable (add, remove, reorder) and owned by you, with the original track counts. No duplicate "Untitled" or file-based copies.
 - [ ] Every playlist entry resolves (the playlist phase report has no *Entries not found in Jellyfin*).
 - [ ] Spot check: Cymande's artist page shows only "Dove", under its real album.
 - [ ] Spot check: `The Roots - Things Fall Apart` has gained no extra tracks.
 - [ ] Deemix check: re-download one small playlist you already own. Nothing new is downloaded, one `<Playlist>.m3u8` appears at the root, and `python3 -m reorganize_playlists import` adds nothing.
-- [ ] `git -C ~/Music/Deemix log --stat` shows the migrate commits and tracks only text files.
-- [ ] When satisfied, empty `~/Music/Deemix-trash/` and delete the APFS clone by hand.
+- [ ] `git -C "$MUSIC_DIR/Deemix" log --stat` shows the migrate commits and tracks only text files.
+- [ ] When satisfied, empty `$MUSIC_DIR/Deemix-trash/` and delete the APFS clone by hand.
 
 ## Rollback
 
 Undo the newest run first:
 
 ```bash
-python3 -m reorganize_playlists rollback ~/Music/Deemix/.reorganize/runs/<id>/manifest.json
+python3 -m reorganize_playlists rollback "$MUSIC_DIR/Deemix/.reorganize/runs/<id>/manifest.json"
 ```
 
 Rolling back the playlist phase deletes the Jellyfin playlists it created, so it needs the API key. Rolling back the file phase should be done with Jellyfin stopped. If anything is beyond repair, restore from the APFS clone.

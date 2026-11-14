@@ -38,15 +38,27 @@ class UnionTestCase(unittest.TestCase):
         (path / "01 - Song.flac").write_bytes(b"fake")
         return path
 
-    def run_tool(self, *args: str, expect: int = 0) -> str:
-        argv = ["--union", str(self.union), "--deemix", str(self.deemix),
-                "--lidarr", str(self.lidarr), "--overrides", str(self.overrides), *args]
+    def run_tool(self, *args: str, paths: bool = True, expect: int = 0) -> str:
+        argv = (["--union", str(self.union), "--deemix", str(self.deemix),
+                 "--lidarr", str(self.lidarr)] if paths else []) + [
+                 "--overrides", str(self.overrides), *args]
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             code = main(argv)
         self.output = out.getvalue() + err.getvalue()
         self.assertEqual(code, expect, self.output)
         return self.output
+
+    def set_env(self, key: str, value: str) -> None:
+        self.addCleanup(self._restore_env, key, os.environ.get(key))
+        os.environ[key] = value
+
+    @staticmethod
+    def _restore_env(key: str, old: str | None) -> None:
+        if old is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = old
 
     def entries(self) -> dict[str, str]:
         """Union entry name -> readlink target, for every symlink in the union root."""
@@ -388,6 +400,25 @@ class UnionRootMaintenanceTest(UnionTestCase):
         after = {p.relative_to(self.deemix).as_posix() for p in self.deemix.rglob("*")}, \
             {p.relative_to(self.lidarr).as_posix() for p in self.lidarr.rglob("*")}
         self.assertEqual(before, after)
+
+
+class EnvDefaultsTest(UnionTestCase):
+    def test_music_root_env_supplies_the_tree_paths(self) -> None:
+        self.set_env("MUSIC_ROOT", str(self.deemix.parent))
+        self.deemix_album("Herbie Hancock - Takin' Off")
+
+        self.run_tool(paths=False)
+
+        self.assertEqual(self.entries(),
+                         {"Herbie Hancock - Takin' Off": "../Deemix/Herbie Hancock - Takin' Off"})
+
+    def test_union_root_env_var_alone(self) -> None:
+        self.set_env("UNION_ROOT", str(self.union))
+        self.deemix_album("Herbie Hancock - Takin' Off")
+
+        self.run_tool("--deemix", str(self.deemix), "--lidarr", str(self.lidarr), paths=False)
+
+        self.assertEqual(list(self.entries()), ["Herbie Hancock - Takin' Off"])
 
 
 if __name__ == "__main__":

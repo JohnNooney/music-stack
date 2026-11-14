@@ -4,11 +4,11 @@ Deemix downloads music into one library on disk and the Lidarr stack into anothe
 
 ```mermaid
 flowchart TD
-    D["Deemix<br>Deezer downloads"] --> DL["~/Music/Deemix<br>library root"]
-    LS["Lidarr stack<br>Lidarr · Prowlarr · Soularr · Slskd · Transmission"] --> LL["~/Music/Lidarr/media/music"]
+    D["Deemix<br>Deezer downloads"] --> DL["$MUSIC_DIR/Deemix<br>library root"]
+    LS["Lidarr stack<br>Lidarr · Prowlarr · Soularr · Slskd · Transmission"] --> LL["$MUSIC_DIR/Lidarr/media/music"]
     DL -- "migrate: dedup and place" --> U
     LL --> U["union_library"]
-    U -- "one symlink per album" --> UR["~/Music/Jellyfin<br>union root"]
+    U -- "one symlink per album" --> UR["$MUSIC_DIR/Jellyfin<br>union root"]
     UR -- "the only directory scanned" --> J["Jellyfin"]
     W["library-watcher"] -. "on change: migrate → union → import" .-> U
 ```
@@ -17,17 +17,17 @@ flowchart TD
 
 | Service | Image (pinned) | Port | Volumes |
 |---|---|---|---|
-| `jellyfin` | `jellyfin/jellyfin:12.4` | 8096/tcp (web), 7359/udp (discovery) | `./config` → `/config`, `./cache` → `/cache`, `~/Music/Jellyfin` → `/media` (union root), `~/Music/Deemix` → `/Deemix:ro`, `~/Music/Lidarr` → `/Lidarr:ro` |
-| `deemix` | `ghcr.io/bambanah/deemix:v4.8.0` | 6595 (web) | `~/Music/Deemix` → `/downloads`, `./deemix-config` → `/config` |
-| `library-watcher` | built from `docker/library-watcher/` (`python:3.13.18-alpine` + git) | — | repo → `/tools:ro`, `~/Music` → same path |
+| `jellyfin` | `jellyfin/jellyfin:12.4` | 8096/tcp (web), 7359/udp (discovery) | `./config` → `/config`, `./cache` → `/cache`, `$MUSIC_DIR/Jellyfin` → `/media` (union root), `$MUSIC_DIR/Deemix` → `/Deemix:ro`, `$MUSIC_DIR/Lidarr` → `/Lidarr:ro` |
+| `deemix` | `ghcr.io/bambanah/deemix:v4.8.0` | 6595 (web) | `$MUSIC_DIR/Deemix` → `/downloads`, `./deemix-config` → `/config` |
+| `library-watcher` | built from `docker/library-watcher/` (`python:3.13.18-alpine` + git) | — | repo → `/tools:ro`, `$MUSIC_DIR` → `$MUSIC_ROOT` (`/music`) |
 | `lidarr` | `ghcr.io/hotio/lidarr:latest` | 8686 (web) | `./lidarr` → `/config`, `${DATA_DIR}` → `/data` |
 | `prowlarr` | `ghcr.io/hotio/prowlarr:latest` | 9696 (web) | `./prowlarr` → `/config`, `${DATA_DIR}` → `/data` |
 | `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr:latest` | 8191 | stateless — tmpfs `/tmp` for browser profiles |
 | `soularr` | `mrusse08/soularr:latest` | 8265 (web) | `./soularr` → `/data` (holds `config.ini`), `${DATA_DIR}/slskd/{downloads,incomplete}` |
-| `slskd` | `slskd/slskd` | 5030 (web), 5031 (https), 50300 (slsk listen) | `./slskd` → `/app`, `${DATA_DIR}/slskd/{downloads,incomplete}`, `${DATA_DIR}/media` → `/data:ro`, `~/Music/Deemix` → `/deemix:ro` |
+| `slskd` | `slskd/slskd` | 5030 (web), 5031 (https), 50300 (slsk listen) | `./slskd` → `/app`, `${DATA_DIR}/slskd/{downloads,incomplete}`, `${DATA_DIR}/media` → `/data:ro`, `$MUSIC_DIR/Deemix` → `/deemix:ro` |
 | `transmission` | `lscr.io/linuxserver/transmission:latest` | 9091 (web), 51413 (t/u peer) | `./transmission` → `/config`, `${DATA_DIR}/torrents` → `/data/torrents` |
 
-`jellyfin`/`deemix`/`library-watcher` run as uid/gid 501; the Lidarr stack runs as `PUID`/`PGID` from `.env` (501:20 on this host — FlareSolverr ignores them, its image uses a fixed user). `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/reference/lidarr-stack.md](docs/reference/lidarr-stack.md#secrets-layout)).
+`jellyfin`/`deemix`/`library-watcher` run as uid/gid 502; the Lidarr stack runs as `PUID`/`PGID` from `.env` (502:20 on this host — FlareSolverr ignores them, its image uses a fixed user). `$MUSIC_DIR` (`.env`) is the host tree the Deemix/Lidarr/Jellyfin folders live under. `cache/` and `.env` are git-ignored, as is almost all of `config/` (db, metadata, logs), `deemix-config/` (credentials, queue, logs — they used to live in the music library), and the Lidarr stack's app dirs (`lidarr/`, `prowlarr/`, `slskd/`, `soularr/`, `transmission/` — runtime state + secrets). The small settings files are tracked so changes are visible in diffs: `config/config/*.xml`, `config/root/`, `config/plugins/configurations/`, `deemix-config/config.json`, `soularr/config.ini.example`, `slskd/slskd.yml.example`. Secrets never live in tracked files — they come from `.env` (see [docs/reference/lidarr-stack.md](docs/reference/lidarr-stack.md#secrets-layout)).
 
 ```bash
 docker compose up -d                  # start everything (or name services to start a subset)

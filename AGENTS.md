@@ -18,4 +18,4 @@ Test only through `main(argv, deezer=FakeDeezer, jellyfin=FakeJellyfin)` (`reorg
 
 - macOS volumes are case- and normalisation-insensitive: `Deemix/` and `deemix/` collide in a temp dir, and NFC/NFD names refer to the same file.
 - python.org Python on macOS has no CA bundle; `deezer.py` falls back to `/etc/ssl/cert.pem`.
-- `/Volumes/512GB SSD/Music/Deemix` is the real library (compose's `MUSIC_DIR`; the old `/Users/john/Music` defaults in the tools' `--help` are stale from the previous host). Live runs move real files, so dry-run first.
+- `/Volumes/512GB SSD/Music` is the real music tree (compose's `MUSIC_DIR`). Every tool's path defaults come from `MUSIC_ROOT`/`DEEMIX_ROOT`/`LIDARR_ROOT`/`UNION_ROOT` env vars — flags override. Live runs move real files, so dry-run first.

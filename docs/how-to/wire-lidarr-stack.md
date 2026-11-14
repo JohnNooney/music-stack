@@ -62,7 +62,7 @@ shares:
     - /deemix
 ```
 
-`/deemix` is `/Users/john/Music/Deemix` mounted read-only — sharing real files
+`/deemix` is `$MUSIC_DIR/Deemix` mounted read-only — sharing real files
 is important, since many Soulseek peers auto-reject users with an empty share.
 Add `/downloads` too if you want completed grabs shared onward automatically.
 

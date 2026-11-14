@@ -1,6 +1,6 @@
 # union_library
 
-`union_library` builds and maintains the **union root** `~/Music/Jellyfin/` — one relative symlink per album pointing into whichever source tree holds the canonical copy — the only directory Jellyfin scans. Deemix-sourced entries keep the Deemix album folder's name verbatim, so every existing Jellyfin item keeps its path and its ID ([ADR 0004](../explanation/adr/0004-union-library-over-deemix-and-lidarr.md)).
+`union_library` builds and maintains the **union root** `$MUSIC_DIR/Jellyfin/` — one relative symlink per album pointing into whichever source tree holds the canonical copy — the only directory Jellyfin scans. Deemix-sourced entries keep the Deemix album folder's name verbatim, so every existing Jellyfin item keeps its path and its ID ([ADR 0004](../explanation/adr/0004-union-library-over-deemix-and-lidarr.md)).
 
 Stdlib-only, no API calls; the only filesystem effects are `symlink`/`unlink` inside the union root. Neither source tree is ever modified.
 
@@ -13,12 +13,14 @@ python3 -m union_library             # apply it
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--union` | `~/Music/Jellyfin` | union root (created on the first live run) |
-| `--deemix` | `~/Music/Deemix` | Deemix library root |
-| `--lidarr` | `~/Music/Lidarr/media/music` | Lidarr music root |
+| `--union` | env `UNION_ROOT`, else `$MUSIC_ROOT/Jellyfin` | union root (created on the first live run) |
+| `--deemix` | env `DEEMIX_ROOT`, else `$MUSIC_ROOT/Deemix` | Deemix library root |
+| `--lidarr` | env `LIDARR_ROOT`, else `$MUSIC_ROOT/Lidarr/media/music` | Lidarr music root |
 | `--overrides` | `union_library_overrides` (repo root) | overrides file (absent = no overrides) |
 | `--exclude NAME` | — | extra Deemix root entries never mirrored (repeatable) |
 | `--dry-run` | off | report only, no filesystem changes |
+
+`MUSIC_ROOT` itself defaults to `/Volumes/512GB SSD/Music` (the compose `MUSIC_DIR` source). Flags beat env vars, env vars beat the default.
 
 Each run prints a report (and saves it under `<union>/.union/runs/<run>/report.txt`) with, in order: **Linked (new)**, **Relinked (Deemix → Lidarr)**, **Ambiguous matches (kept Deemix)**, **Overridden**, **Loose-root items mirrored**, **Excluded**, **Foreign entries (untouched)**, **Pruned dangling links**, **Non-disc subfolders (Jellyfin will split these)**, **Failed actions**, and a reminder to rescan. Re-running on an unchanged world produces an empty plan.
 

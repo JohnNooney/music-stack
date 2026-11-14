@@ -21,7 +21,7 @@ walkthrough.
 
 | Doc | Contents |
 |---|---|
-| [library-layout.md](reference/library-layout.md) | The rules `~/Music/Deemix` obeys |
+| [library-layout.md](reference/library-layout.md) | The rules `$MUSIC_DIR/Deemix` obeys |
 | [settings.md](reference/settings.md) | The Deemix/Jellyfin settings the layout depends on |
 | [reorganize_playlists.md](reference/reorganize_playlists.md) | `reorganize_playlists` commands, options, merge rules |
 | [union_library.md](reference/union_library.md) | `union_library` flags, matching, overrides |

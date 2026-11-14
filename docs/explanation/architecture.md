@@ -1,9 +1,9 @@
 # How the stack fits together
 
 Two download paths feed one library. **Deemix** downloads from Deezer into
-`~/Music/Deemix`; the **Lidarr stack** downloads from Soulseek and torrent
-indexers into `~/Music/Lidarr/media/music`. `union_library` merges the two
-source trees into `~/Music/Jellyfin` — a directory of relative symlinks, one
+`$MUSIC_DIR/Deemix`; the **Lidarr stack** downloads from Soulseek and torrent
+indexers into `$MUSIC_DIR/Lidarr/media/music`. `union_library` merges the two
+source trees into `$MUSIC_DIR/Jellyfin` — a directory of relative symlinks, one
 per album — and that union root is the only directory Jellyfin scans. The
 `library-watcher` compose sidecar keeps it all current without anyone running
 anything by hand.
@@ -12,13 +12,13 @@ anything by hand.
  Deemix (Deezer)                          Lidarr stack (Soulseek / torrents)
       │                                          │
       ▼                                          ▼
- ~/Music/Deemix                     ~/Music/Lidarr/media/music
+ $MUSIC_DIR/Deemix                  $MUSIC_DIR/Lidarr/media/music
  (library root)                     (Lidarr source tree)
       │                                          │
       └────────────── union_library ─────────────┘
                      │ one symlink per album
                      ▼
-              ~/Music/Jellyfin  (union root)
+              $MUSIC_DIR/Jellyfin  (union root)
                      │ scanned by
                      ▼
                   Jellyfin
