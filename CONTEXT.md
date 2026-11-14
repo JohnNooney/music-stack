@@ -101,3 +101,19 @@ _Avoid_: recycle bin, deleted files
 **Inventory**:
 A text listing of every audio file in the library (path, ISRC, size, artist, album, title), tracked in git as the reviewable record of layout changes.
 _Avoid_: manifest (that is a per-run undo log), index
+
+### Networking
+
+**Routed service**:
+A compose service that shares gluetun's network namespace (`network_mode: "service:gluetun"`) — prowlarr, slskd, flaresolverr, transmission; all its traffic egresses through the IPVanish tunnel and its ports publish on `gluetun`.
+_Avoid_: VPN container (that is gluetun itself)
+
+**Non-routed service**:
+Any other compose service — jellyfin, deemix, library-watcher, lidarr, soularr, tailscale; keeps its own network namespace and direct egress.
+
+**Shared netns**:
+The single network namespace owned by the gluetun container that the routed services join; inside it they reach each other on `localhost`.
+
+**Serve config**:
+The `tailscale/serve.json` read via `TS_SERVE_CONFIG` that declares which tailnet HTTPS port proxies to which `service:port` backend.
+_Avoid_: funnel config (serve is tailnet-only; funnel is public and unused)

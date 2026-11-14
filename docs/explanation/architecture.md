@@ -86,6 +86,22 @@ Files land in DATA_DIR/media/music → union_library symlinks them into the
 union root → Jellyfin serves them
 ```
 
+## Egress and remote access
+
+The download path's internet-facing services — Prowlarr's indexer queries,
+FlareSolverr's fetches, Slskd's Soulseek connection and Transmission's swarm
+traffic — run **routed**: they share the `gluetun` container's network
+namespace, so everything egresses through an IPVanish OpenVPN tunnel with
+gluetun's firewall as the kill switch. The media-serving side (jellyfin,
+deemix, library-watcher, lidarr, soularr) keeps direct egress — the VPN adds
+latency and a failure mode the library doesn't need. A `tailscale` sidecar on
+its own netns serves every web UI to the tailnet over HTTPS, so the stack is
+reachable remotely without exposing anything publicly; it deliberately does
+*not* share gluetun's netns, which would force tailnet traffic through
+IPVanish and kill direct peer paths
+([spec 0005](specs/0005-gluetun-vpn-tailscale.md),
+[research](research/gluetun-vpn-tailscale-research.md)).
+
 ## Automation: why a polling sidecar
 
 The watcher polls the source trees on an interval and waits for a quiet

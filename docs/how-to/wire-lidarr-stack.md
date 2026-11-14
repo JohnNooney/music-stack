@@ -5,6 +5,9 @@ Per-service wiring for the Lidarr stack once `.env` is configured and
 services in this order — Soularr and Prowlarr both need the Lidarr API key.
 
 Service inventory, ports and data layout: [../reference/lidarr-stack.md](../reference/lidarr-stack.md).
+Prowlarr, slskd, transmission and flaresolverr are **routed** through gluetun
+(spec 0005) — their `*.internal` aliases resolve on gluetun, so the addresses
+below are unchanged, but routed services reach *each other* on `localhost`.
 
 ## 1. Lidarr (http://localhost:8686)
 
@@ -22,6 +25,10 @@ Service inventory, ports and data layout: [../reference/lidarr-stack.md](../refe
 ## 2. Prowlarr (http://localhost:9696)
 
 - Add your indexers.
+- For indexers that need the FlareSolverr proxy (Settings > Indexer Proxies),
+  set its Host to `http://localhost:8191` — Prowlarr and FlareSolverr share
+  gluetun's netns, so `localhost` is correct (and they share an egress IP,
+  which the solver's IP-bound cookies need).
 - Settings > Apps: add Lidarr (host `lidarr.internal`, port `8686`, the API key
   from step 1). Prowlarr syncs indexers to Lidarr automatically.
 

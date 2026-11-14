@@ -107,6 +107,8 @@ Everything secret lives in the git-ignored `.env` or in git-ignored app config:
     `https://<hostname>.<tailnet>.ts.net` (+ ports 8443–8448) per
     `tailscale/serve.json` — tailnet-only, ACL-gated, never public (funnel is
     not used). It stays off gluetun's netns so tailnet paths stay direct.
+    `serve.json` is single-file-mounted, so edits need
+    `docker compose up -d --force-recreate tailscale` to take effect.
 - Remove `transmission` or `prowlarr` if you don't want torrents — the Soulseek
   path (Lidarr + Soularr + Slskd) doesn't need them.
 - `SCRIPT_INTERVAL=300` makes Soularr check Lidarr for wanted albums every 5

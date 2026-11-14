@@ -1,10 +1,15 @@
 # Gluetun (IPVanish) VPN + Tailscale remote access for the download stack — research
 
-Research date: 2026-11-13. Sources: the official gluetun wiki and source repo
-(`qdm12/gluetun`, `qdm12/gluetun-wiki`), IPVanish's own support articles, the
-Docker Compose spec and docker docs, the slskd repo (`slskd/slskd`), the
-Transmission docs, and tailscale.com docs + the `tailscale/tailscale` image
-reference. Secret values are **never** reproduced — placeholders only.
+Research date: 2026-11-13; 2026-11-14 verification pass (all claims re-checked
+against current primary sources — note the gluetun source repo migrated from
+`qdm12/gluetun` to `passteque/gluetun` on 2026-05-21, same author, image names
+unchanged; the `qdm12/gluetun` URLs below still redirect). Sources: the
+official gluetun wiki and source repo (`passteque/gluetun`,
+`qdm12/gluetun-wiki`), IPVanish's own support articles, the Docker Compose
+spec and docker docs, the slskd repo (`slskd/slskd`), the Transmission docs,
+and tailscale.com docs + the `tailscale/tailscale` image reference and source
+(`tailscale/tailscale`). Secret values are **never** reproduced — placeholders
+only.
 
 > **TL;DR — All four services can share one Gluetun container's network stack;
 > IPVanish means OpenVPN only and no inbound ports — ever.** Gluetun supports
@@ -18,10 +23,45 @@ reference. Secret values are **never** reproduced — placeholders only.
 > published ports move onto `gluetun` (§3). Non-routed containers (lidarr,
 > soularr, jellyfin) reach the routed apps as `gluetun:<port>` — and the routed
 > apps reach them back by service name only if gluetun uses Docker DNS
-> (`DNS_ADDRESS=127.0.0.11`, §4). For Tailscale, run `tailscale serve` **on the
-> Mac host** against the gluetun-published localhost ports — simpler than a
-> sidecar container, and the routed services never touch the tailnet directly
-> (§6).
+> (`DNS_ADDRESS=127.0.0.11`, §4). For Tailscale, the shipped design is a
+> `tailscale/tailscale` sidecar on its own netns serving every web UI to the
+> tailnet via `TS_SERVE_CONFIG` (§6, "As built" below) — host-side
+> `tailscale serve` (Option A) remains the documented alternative.
+
+---
+
+## As built (2026-11-14)
+
+Spec 0005 shipped **Option B**: prowlarr, slskd, flaresolverr and transmission
+are routed through `gluetun` (`network_mode: "service:gluetun"`,
+`depends_on: { gluetun: { condition: service_healthy } }`, `ports:`/`networks:`
+removed), and a `tailscale/tailscale` sidecar on its own netns serves every
+web UI to the tailnet. Option A was rejected on user preference — spec 0005
+Out of Scope ("nothing gets installed on the host").
+
+- Ports published on gluetun: `9696` (prowlarr), `5030`/`5031` (slskd UI),
+  `50300` (slskd Soulseek listen, LAN-only), `9091` (transmission), `51413`
+  tcp+udp (transmission peer, LAN-only), `8191` (flaresolverr). The four
+  `*.internal` aliases sit on gluetun's `networks:` entry;
+  `DNS_ADDRESS=127.0.0.11` is set.
+- Tailnet serve map (`tailscale/serve.json`; tracked template
+  `tailscale/serve.json.example`): `443` → `http://jellyfin:8096`, `8443` →
+  `http://gluetun:5030` (slskd), `8444` → `http://gluetun:9091`
+  (transmission), `8445` → `http://gluetun:9696` (prowlarr), `8446` →
+  `http://deemix:6595`, `8447` → `http://lidarr:8686`, `8448` →
+  `http://soularr:8265`. FlareSolverr is not served. Env: `TS_AUTHKEY`,
+  `TS_STATE_DIR=/var/lib/tailscale`, `TS_HOSTNAME`,
+  `TS_SERVE_CONFIG=/config/serve.json`,
+  `TS_EXTRA_ARGS=--advertise-tags=tag:container` — `TS_USERSPACE` left at its
+  `true` default.
+- Claims that turned out load-bearing and verified clean: the image's
+  built-in `HEALTHCHECK` making `service_healthy` wait for the tunnel (§1.3);
+  `DNS_ADDRESS=127.0.0.11` restoring Docker service-name resolution for
+  routed containers (§4.2); gluetun auto-allowing its attached Docker subnets
+  so no `FIREWALL_OUTBOUND_SUBNETS` is needed (§1.4); IPVanish having no port
+  forwarding and no native gluetun WireGuard (§1.2/§5); and tailscaled
+  needing its own netns so its control/DERP/peer traffic isn't forced through
+  the tunnel (§6).
 
 ---
 
@@ -56,7 +96,9 @@ Gluetun's WireGuard provider list is hard-coded in
 `internal/configuration/settings/provider.go`: `airvpn, custom, fastestvpn,
 ivpn, mullvad, nordvpn, protonvpn, surfshark, windscribe` — **IPVanish is not
 in it**, and setting `VPN_TYPE=wireguard` with `VPN_SERVICE_PROVIDER=ipvanish`
-fails validation. Source:
+fails validation. (Re-verified 2026-11-14 against the current file — the
+switch now also has an `amneziawg` VPN type that accepts only `custom`; the
+WireGuard list itself is unchanged.) Source:
 https://github.com/qdm12/gluetun/blob/master/internal/configuration/settings/provider.go;
 tracking issue https://github.com/qdm12/gluetun/issues/134 explicitly marks
 "IPVanish not supported" for WireGuard. IPVanish *does* offer manual WireGuard
@@ -284,15 +326,23 @@ either (docker network is allowed by default — §1.4).
 - Lidarr's download-client entry for Transmission: `gluetun` or
   `transmission.internal` host, port `9091`.
 - **Caveat — DNS inside routed containers:** Gluetun rewrites
-  `/etc/resolv.conf` to `127.0.0.1` (its DoT/Unbound resolver, `DOT=on`
-  default); Docker's embedded `127.0.0.11` then isn't used, so routed
+  `/etc/resolv.conf` to `127.0.0.1` (its DoT/Unbound resolver; `DNS_SERVER=on`
+  default — renamed from `DOT` in v3.41 with retro-compatibility); Docker's
+  embedded `127.0.0.11` then isn't used, so routed
   containers **cannot resolve docker service names like `lidarr.internal`**
   unless gluetun is told to use Docker DNS: `DNS_ADDRESS=127.0.0.11` —
   https://github.com/qdm12/gluetun-wiki/blob/main/setup/options/dns.md.
+  Nuance since v3.41: gluetun's DNS forwards *local network names* to the
+  private resolvers found in `/etc/resolv.conf` at container start
+  (release notes https://github.com/passteque/gluetun/releases/tag/v3.41.0,
+  qdm12 in https://github.com/passteque/gluetun/issues/3233) — so bare
+  service names like `lidarr` can resolve even without the override; the
+  dotted `*.internal` aliases are not guaranteed to count as local, so
+  `DNS_ADDRESS=127.0.0.11` remains the reliable path and is what shipped.
   This matters because routed **Prowlarr pushes indexers to Lidarr**
   (`lidarr.internal:8686`/`lidarr:8686`). `DNS_ADDRESS` is preferable to
   `DNS_KEEP_NAMESERVER=on`, which the wiki warns "will likely leak DNS
-  traffic outside the VPN" (it implies `DOT=off`). Trade-off of
+  traffic outside the VPN" (it implies `DNS_SERVER=off`). Trade-off of
   `DNS_ADDRESS=127.0.0.11`: service-name resolution works and public
   lookups are forwarded by Docker's resolver — still inside the netns, so
   they egress via the tunnel — but Gluetun's own Unbound/DoT + blocklists
@@ -345,7 +395,7 @@ adding/removing a published port means recreating gluetun's netns, i.e.
 
 ## 6. Tailscale access to the web UIs
 
-### Option A — Tailscale on the Mac host + `tailscale serve` (recommended)
+### Option A — Tailscale on the Mac host + `tailscale serve` (not shipped; valid alternative)
 
 Docs: https://tailscale.com/docs/features/tailscale-serve,
 https://tailscale.com/docs/reference/tailscale-cli/serve.
@@ -377,49 +427,97 @@ Notes:
   (`"127.0.0.1:9696:9696"`) so the UIs are reachable *only* via localhost /
   tailscale serve, not the LAN.
 
-### Option B — `tailscale/tailscale` sidecar container
+### Option B — `tailscale/tailscale` sidecar container (what shipped)
 
 Image reference: https://hub.docker.com/r/tailscale/tailscale and
 https://tailscale.com/docs/features/containers/docker/docker-params;
 worked example: https://tailscale.com/blog/docker-tailscale-guide.
+Env parsing verified in source: `cmd/containerboot/settings.go` —
+https://github.com/tailscale/tailscale/blob/main/cmd/containerboot/settings.go.
 
-- Env: `TS_AUTHKEY` (in `.env`), `TS_STATE_DIR=/var/lib/tailscale` (persisted
-  volume — mandatory or the node re-registers every recreate),
-  `TS_HOSTNAME`, `TS_SERVE_CONFIG=/config/serve.json`,
-  `TS_EXTRA_ARGS=--advertise-tags=tag:container`.
+- Env: `TS_AUTHKEY` (also accepted as `TS_AUTH_KEY`; in `.env`),
+  `TS_STATE_DIR=/var/lib/tailscale` (persisted volume — mandatory or the node
+  re-registers every recreate), `TS_HOSTNAME`,
+  `TS_SERVE_CONFIG=/config/serve.json`,
+  `TS_EXTRA_ARGS=--advertise-tags=tag:container` — all read by containerboot
+  in `settings.go` (`configFromEnv`).
 - `TS_USERSPACE` defaults to `true` (userspace netstack, no `/dev/net/tun`
-  needed) — https://tailscale.com/docs/concepts/userspace-networking.
+  needed — `def.Bool(os.Getenv("TS_USERSPACE"), true)` in settings.go) —
+  https://tailscale.com/docs/concepts/userspace-networking.
+- Tagged nodes: applying a tag at auth time disables the device's key expiry
+  by default — https://tailscale.com/docs/features/tags. The auth key itself
+  still expires (max 90 days), but the *node* doesn't, so the sidecar
+  survives `TS_AUTHKEY` going stale after first registration.
 - **Give it its own netns on the default compose network** and point
   `TS_SERVE_CONFIG` proxies at the routed apps *by gluetun name* — they
   listen inside gluetun's netns and are reachable at `gluetun:9696` etc.
-  (§4.2). Sketch of the serve config (shape per `tailscale serve status
-  --json`, documented in the docker-params page):
+  (§4.2). Serve config schema verified in `ipn/serve.go`
+  (https://github.com/tailscale/tailscale/blob/main/ipn/serve.go):
+  `ServeConfig{TCP: map[port]*TCPPortHandler, Web:
+  map[HostPort]*WebServerConfig, AllowFunnel, Foreground, Services}`; `Web`
+  keys are `"$SNI_NAME:$PORT"` — i.e. the node's real
+  `<TS_HOSTNAME>.<tailnet>.ts.net` FQDN plus the tailnet port; each `Web`
+  entry's `Handlers` maps mount points to `HTTPHandler{Proxy|Path|Text}`;
+  `TCPPortHandler.HTTPS=true` means tailscaled terminates TLS. The shipped
+  file (tracked template `tailscale/serve.json.example`; the live
+  `serve.json` is git-ignored because its Web keys embed the real FQDN):
 
   ```json
   {
-    "TCP": { "443": { "HTTPS": true }, "8443": { "HTTPS": true } },
+    "TCP": {
+      "443":  { "HTTPS": true },
+      "8443": { "HTTPS": true }, "8444": { "HTTPS": true },
+      "8445": { "HTTPS": true }, "8446": { "HTTPS": true },
+      "8447": { "HTTPS": true }, "8448": { "HTTPS": true }
+    },
     "Web": {
-      "<host>.<tailnet>.ts.net:443":  { "Handlers": { "/": { "Proxy": "http://gluetun:9696" } } },
-      "<host>.<tailnet>.ts.net:8443": { "Handlers": { "/": { "Proxy": "http://gluetun:5030" } } }
+      "<TS_HOSTNAME>.<tailnet>.ts.net:443":  { "Handlers": { "/": { "Proxy": "http://jellyfin:8096" } } },
+      "<TS_HOSTNAME>.<tailnet>.ts.net:8443": { "Handlers": { "/": { "Proxy": "http://gluetun:5030" } } },
+      "<TS_HOSTNAME>.<tailnet>.ts.net:8444": { "Handlers": { "/": { "Proxy": "http://gluetun:9091" } } },
+      "<TS_HOSTNAME>.<tailnet>.ts.net:8445": { "Handlers": { "/": { "Proxy": "http://gluetun:9696" } } },
+      "<TS_HOSTNAME>.<tailnet>.ts.net:8446": { "Handlers": { "/": { "Proxy": "http://deemix:6595" } } },
+      "<TS_HOSTNAME>.<tailnet>.ts.net:8447": { "Handlers": { "/": { "Proxy": "http://lidarr:8686" } } },
+      "<TS_HOSTNAME>.<tailnet>.ts.net:8448": { "Handlers": { "/": { "Proxy": "http://soularr:8265" } } }
     }
   }
   ```
 
+  No `AllowFunnel` key — `serve` is tailnet-only (public exposure would be
+  `funnel`, a different feature —
+  https://tailscale.com/docs/features/tailscale-funnel; funnel is also
+  restricted to ports 443/8443/10000, which our 8444+ map couldn't use
+  anyway).
+- Caveat found on the 2026-11-14 pass: the docker-params page says the
+  `TS_SERVE_CONFIG` file should be bind-mounted **as a directory**, not an
+  individual file, "for Tailscale to correctly detect configuration updates"
+  — https://tailscale.com/docs/features/containers/docker/docker-params.
+  The shipped compose mounts `./tailscale/serve.json` as a single read-only
+  file: initial load works (that's how it's running), but editing the map
+  later won't be picked up live — recreate the container, or mount
+  `./tailscale:/config:ro` instead.
 - **Do not share gluetun's netns** for this purpose: with
   `network_mode: service:gluetun`, tailscaled's outbound control/DERP/peer
-  traffic is forced through the IPVanish tunnel — direct tailnet paths can't
-  form and everything falls back to relays. That pattern only makes sense for
+  traffic is forced through the IPVanish tunnel. Tailscale only upgrades a
+  DERP-relayed session to a direct path when NAT traversal succeeds, and a
+  hard NAT on either side keeps it relayed —
+  https://tailscale.com/docs/reference/device-connectivity. IPVanish's NAT
+  firewall admits nothing inbound (§5), so tailscaled behind it is a
+  permanent hard-NAT endpoint: direct paths can't form and everything
+  rides DERP relays through the tunnel. That pattern only makes sense for
   a deliberate "tailnet exit node over commercial VPN" build (community
   example https://github.com/mhajder/ts-vpn-exit, which *requires*
   `TS_USERSPACE=true` precisely because gluetun owns `/dev/net/tun`). For
   merely reaching UIs, an own-netns sidecar (or Option A) is correct.
 
-### Recommendation: Option A
+### Outcome: Option B shipped
 
-Zero new containers, no auth-key/state management, works today because the
-ports are already published on the host. Choose Option B only if you want the
-whole remote-access story inside compose, or distinct tailnet node names per
-service (`TS_SERVE_CONFIG` + `svc:`-style naming).
+Spec 0005 chose the sidecar — Option A was rejected on user preference
+("nothing gets installed on the host"; spec 0005 Out of Scope). The Option A
+analysis above stays as the documented alternative. Option B's advantages
+that carried the decision: the whole remote-access story lives in
+`docker-compose.yml`, and `serve.json` version-controls the port map. Its
+costs: one auth key + tag in `.env`, a persisted state dir, and the
+single-file-mount caveat above.
 
 ## 7. Gotchas checklist
 
@@ -443,7 +541,7 @@ service (`TS_SERVE_CONFIG` + `svc:`-style naming).
   *consequences* of a tunnel drop, not causes — per
   https://github.com/qdm12/gluetun-wiki/blob/main/faq/healthcheck.md.
 - `.env` additions: `OPENVPN_USER`, `OPENVPN_PASSWORD` (IPVanish account),
-  optionally `VPN_SERVER_COUNTRIES`, and `TS_AUTHKEY` only if Option B.
+  optionally `VPN_SERVER_COUNTRIES`, and `TS_AUTHKEY`.
 
 ## Sources
 
@@ -455,14 +553,16 @@ service (`TS_SERVE_CONFIG` + `svc:`-style naming).
   - options/firewall.md — `FIREWALL_*` vars + rebinding/overlap notes
   - options/port-forwarding.md — `VPN_PORT_FORWARDING*` vars/provider choices
   - advanced/vpn-port-forwarding.md — native PF providers (no IPVanish)
-  - options/dns.md — `DOT`, `DNS_ADDRESS`, `DNS_KEEP_NAMESERVER` (leak warning)
+  - options/dns.md — `DNS_SERVER` (renamed from `DOT` in v3.41),
+    `DNS_ADDRESS`, `DNS_KEEP_NAMESERVER` (leak warning)
   - options/healthcheck.md + faq/healthcheck.md — health server, HEALTHCHECK,
     auto-heal
   - connect-a-container-to-gluetun.md, inter-containers-networking.md,
     port-mapping.md — `network_mode: "service:gluetun"`, localhost sharing,
     `gluetun:<port>` reachability, publishing rules
   - docker-image-tags.md — `:latest` edge vs `:v3`/release tags
-- Gluetun source (github.com/qdm12/gluetun):
+- Gluetun source — now github.com/passteque/gluetun (migrated 2026-05-21,
+  same author, image names unchanged; qdm12 URLs redirect):
   - internal/configuration/settings/provider.go — WireGuard provider
     allow-list + PF validation
   - internal/provider/ipvanish/openvpnconf.go — IPVanish OpenVPN profile
@@ -470,7 +570,11 @@ service (`TS_SERVE_CONFIG` + `svc:`-style naming).
   - Dockerfile — built-in `HEALTHCHECK ... /gluetun-entrypoint healthcheck`,
     EXPOSE 8000/8888/8388
   - issues #134 (WireGuard matrix: "IPVanish not supported"),
-    #1909 (qdm12: docker network reachable by default)
+    #1909 (qdm12: docker network reachable by default),
+    #3233 (qdm12: local names forwarded to resolv.conf nameservers)
+  - release v3.41.0 — DNS local-network-names resolution (#2970),
+    `DOT`→`DNS_SERVER` rename (retro-compatible), healthcheck rework +
+    `HEALTH_RESTART_VPN`
 - IPVanish support (support.ipvanish.com):
   - articles/115002080173-Port-Forwarding — NAT firewall, no port forwarding
   - articles/360024000253 — account panel (username = signup email; WireGuard
@@ -485,12 +589,19 @@ service (`TS_SERVE_CONFIG` + `svc:`-style naming).
 - Transmission: github.com/transmission/transmission docs/
   Why-Are-My-Speeds-So-Slow.md ("port is closed" = outbound only),
   docs/Port-Forwarding-Guide.md
-- Tailscale: tailscale.com/docs/features/tailscale-serve,
+- Tailscale docs: tailscale.com/docs/features/tailscale-serve,
+  /docs/features/tailscale-funnel (public exposure; ports 443/8443/10000),
   /docs/reference/tailscale-cli/serve (--https/--http/--tcp/--set-path/--bg),
   /docs/features/containers/docker/docker-params (TS_* env incl.
-  TS_SERVE_CONFIG/TS_USERSPACE/TS_STATE_DIR),
-  /docs/concepts/userspace-networking, /blog/docker-tailscale-guide;
+  TS_SERVE_CONFIG/TS_USERSPACE/TS_STATE_DIR + directory-mount caveat),
+  /docs/concepts/userspace-networking, /docs/features/tags (tagged nodes:
+  key expiry disabled), /docs/reference/device-connectivity (hard NAT →
+  DERP-relayed), /blog/docker-tailscale-guide;
   hub.docker.com/r/tailscale/tailscale
+- Tailscale source (github.com/tailscale/tailscale):
+  cmd/containerboot/settings.go (`configFromEnv` — the TS_* var list),
+  ipn/serve.go (`ServeConfig`/`TCPPortHandler`/`WebServerConfig`/
+  `HTTPHandler` — the serve.json schema)
 - Community (secondary, flagged as such): github.com/mhajder/ts-vpn-exit
   (tailscale-in-gluetun-netns exit-node pattern, TS_USERSPACE requirement),
   gluetun discussion #2201 (same)

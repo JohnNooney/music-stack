@@ -319,5 +319,6 @@ services:
       - ./tailscale/state:/var/lib/tailscale
       # Live serve.json is git-ignored (its Web keys embed the real tailnet
       # FQDN); copy serve.json.example and fill it in — see
-      # docs/how-to/vpn-and-tailscale-access.md.
+      # docs/how-to/vpn-and-tailscale-access.md. Single-file mount: edits
+      # aren't picked up live — `--force-recreate tailscale` after changing it.
       - ./tailscale/serve.json:/config/serve.json:ro

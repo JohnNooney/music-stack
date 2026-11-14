@@ -62,6 +62,13 @@ Jellyfin, 8443 → slskd, 8444 → transmission, 8445 → prowlarr, 8446 → dee
 
 `serve.json` and `tailscale/state/` are git-ignored like the other app configs.
 
+Editing `serve.json` later: the compose file mounts it as a single read-only
+file, so tailscaled won't notice the change — run
+`docker compose up -d --force-recreate tailscale` after edits. (Tailscale's
+docs recommend directory-mounting `TS_SERVE_CONFIG` for live update
+detection — mounting `./tailscale:/config:ro` is the alternative; see the
+research doc §6.)
+
 ## 5. Bring the stack up
 
 ```sh
