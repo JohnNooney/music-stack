@@ -294,6 +294,19 @@ class TriggerTest(WatcherTestCase):
         self.assertFalse((self.lidarr / "._junk").exists())
         self.assertFalse((self.union / "._junk").exists())
 
+    def test_volume_noise_inside_union_dirs_is_swept_too(self) -> None:
+        # Sidecars also land inside union album dirs between union runs; there they kill
+        # Jellyfin's enumeration of the album folder, not the root.
+        album = self.union / "A - B"
+        album.mkdir()
+        (album / "._cover.jpg").write_bytes(b"x")
+        (album / "01 - Song.flac").write_bytes(b"x")
+
+        self.run_watcher("--once")
+
+        self.assertFalse((album / "._cover.jpg").exists())
+        self.assertTrue((album / "01 - Song.flac").exists())
+
 
 class ModeTest(WatcherTestCase):
     def test_migrate_mode_dry_adds_dry_run(self) -> None:

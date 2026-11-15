@@ -103,6 +103,15 @@ def _sweep_volume_noise(directory: Path) -> None:
         pass
 
 
+def _sweep_tree(root: Path) -> None:
+    """_sweep_volume_noise for a whole tree (dot dirs pruned). Union album dirs matter
+    most: sidecars land inside them between union runs, and Jellyfin's enumerator then
+    EPERMs on the `._*` and skips the album folder outright."""
+    for dirpath, dirnames, _filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        _sweep_volume_noise(Path(dirpath))
+
+
 def _tree_entries(root: Path, top_excludes: frozenset[str] | set[str]) -> set[tuple[str, int]]:
     """(rel path, mtime) for every non-dot entry under `root`, dot dirs pruned.
 
@@ -327,9 +336,10 @@ class Watcher:
             self.clock.sleep(self.cfg.interval)
 
     def _fingerprint(self) -> Fingerprint | None:
-        # A `._*` file at the union root would kill Jellyfin's own enumeration of /media,
-        # so it gets the same sweep the source trees get per-directory.
-        _sweep_volume_noise(self.cfg.union)
+        # `._*` files inside union album dirs kill Jellyfin's own enumeration of the
+        # folder (EPERM on stat aborts resolving it), so the union tree gets the same
+        # sweep the source trees get during fingerprinting.
+        _sweep_tree(self.cfg.union)
         return fingerprint(self.cfg.deemix, self.cfg.lidarr, self.cfg.overrides)
 
     def _trigger(self, job: str, fp: Fingerprint) -> str:
