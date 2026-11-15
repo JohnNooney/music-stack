@@ -269,17 +269,30 @@ class TriggerTest(WatcherTestCase):
         album.mkdir()
         lidarr_album = self.lidarr / "X" / "Y (2000)"
         lidarr_album.mkdir(parents=True)
+        noise = [album / "._01 - Song.flac", self.deemix / "._A - B", album / ".DS_Store",
+                 lidarr_album / "._01 - Song.flac", self.lidarr / "._X"]
         self.clock.hooks = [
-            lambda: [(album / "._01 - Song.flac").write_bytes(b"x"),
-                     (self.deemix / "._A - B").write_bytes(b"x"),
-                     (album / ".DS_Store").write_bytes(b"x"),
-                     (lidarr_album / "._01 - Song.flac").write_bytes(b"x"),
-                     (self.lidarr / "._X").write_bytes(b"x")],
+            lambda: [p.write_bytes(b"x") for p in noise],
             self.noop, self.noop]
 
         self.run_watcher("--watch-interval", "30", "--quiet-period", "30")
 
         self.assertEqual(self.commands(), ["migrate", "union"])
+        # And swept: ._*/.DS_Store kill in-container stat and Jellyfin's own enumeration.
+        for p in noise:
+            self.assertFalse(p.exists(), p)
+
+    def test_volume_noise_at_the_union_root_is_swept_too(self) -> None:
+        # A ._* file in /media breaks Jellyfin's enumeration of the whole union root.
+        (self.deemix / "._junk").write_bytes(b"x")
+        (self.lidarr / "._junk").write_bytes(b"x")
+        (self.union / "._junk").write_bytes(b"x")
+
+        self.run_watcher("--once")
+
+        self.assertFalse((self.deemix / "._junk").exists())
+        self.assertFalse((self.lidarr / "._junk").exists())
+        self.assertFalse((self.union / "._junk").exists())
 
 
 class ModeTest(WatcherTestCase):

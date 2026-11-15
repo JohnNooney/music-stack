@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from reorganize_playlists.jellyfin import HttpJellyfinClient, JellyfinClient, load_settings
-from reorganize_playlists.library import PLAYLIST_EXTS, env_path, music_root, nfc
+from reorganize_playlists.library import PLAYLIST_EXTS, env_path, is_volume_noise, music_root, nfc
 from union_library.plan import (
     AMBIGUOUS, DEFAULT_EXCLUDES, LINKED, LOOSE, OVERRIDDEN, PRUNED, RELINKED,
 )
@@ -88,14 +88,29 @@ class Fingerprint:
     overrides: int                          # union_library_overrides mtime, -1 when absent
 
 
+def _sweep_volume_noise(directory: Path) -> None:
+    """Unlink `._*`/`.DS_Store` entries — noise macOS scatters on non-Apple volumes. `._*`
+    also can't be stat'ed on the bind mount (EPERM) and kills Jellyfin's own enumeration
+    of the affected directory, so it is deleted on sight rather than merely ignored."""
+    try:
+        for entry in os.scandir(directory):
+            if is_volume_noise(entry.name):
+                try:
+                    os.unlink(entry.path)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def _tree_entries(root: Path, top_excludes: frozenset[str] | set[str]) -> set[tuple[str, int]]:
     """(rel path, mtime) for every non-dot entry under `root`, dot dirs pruned.
 
     Directories are recorded as (path, -1) — only their existence counts, never their own
     mtime: a dir's mtime moves on ANY child write, including the ._*/.DS_Store noise macOS
-    scatters on non-Apple volumes, which every tool ignores. Adding the dir's non-dot
-    children instead means real content changes register at any depth and volume-noise
-    churn never does."""
+    scatters on non-Apple volumes (deleted on sight — see _sweep_volume_noise). Adding the
+    dir's non-dot children instead means real content changes register at any depth and
+    volume-noise churn never does."""
     seen: set[tuple[str, int]] = set()
     base = str(root)
     for dirpath, dirnames, filenames in os.walk(root):
@@ -105,6 +120,12 @@ def _tree_entries(root: Path, top_excludes: frozenset[str] | set[str]) -> set[tu
         for name in dirnames:
             seen.add((nfc((here / name).relative_to(root).as_posix()), -1))
         for name in filenames:
+            if is_volume_noise(name):
+                try:
+                    (here / name).unlink()
+                except OSError:
+                    pass
+                continue
             if name.startswith("."):
                 continue
             try:
@@ -306,6 +327,9 @@ class Watcher:
             self.clock.sleep(self.cfg.interval)
 
     def _fingerprint(self) -> Fingerprint | None:
+        # A `._*` file at the union root would kill Jellyfin's own enumeration of /media,
+        # so it gets the same sweep the source trees get per-directory.
+        _sweep_volume_noise(self.cfg.union)
         return fingerprint(self.cfg.deemix, self.cfg.lidarr, self.cfg.overrides)
 
     def _trigger(self, job: str, fp: Fingerprint) -> str:
