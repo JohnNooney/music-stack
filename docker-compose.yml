@@ -12,6 +12,9 @@ services:
     volumes:
       - /Volumes/512GB SSD/jellyfin/config:/config
       - /Volumes/512GB SSD/jellyfin/cache:/cache
+      # Logs on a named volume, same reason as the deemix service: ._ AppleDouble
+      # sidecars materialise on the exFAT bind mount and EPERM on stat inside containers.
+      - jellyfin-logs:/config/log
       # /media is the union root built by union_library (ADR 0004); the source trees are
       # mounted read-only at sibling paths purely so its relative symlinks resolve in-container.
       - type: bind
@@ -80,8 +83,12 @@ services:
       - type: bind
         source: ${MUSIC_DIR:-/Volumes/512GB SSD/Music}/Deemix
         target: /downloads
-      # Config (credentials, queue, logs) lives in this repo, git-ignored, never in the scanned library.
+      # Config (credentials, queue) lives in this repo, git-ignored, never in the scanned library.
       - /Volumes/512GB SSD/jellyfin/deemix-config:/config
+      # Logs stay on a named volume: the cont-init chown pass materializes ._ AppleDouble
+      # sidecars on the exFAT bind mount, and removeOldLogs' lstat on them throws EPERM,
+      # which kills Deemix at startup (uncaughtException).
+      - deemix-logs:/config/logs
     restart: 'unless-stopped'
 
   # --- Lidarr stack (imported from ../lidarr-stack) ---
@@ -170,6 +177,8 @@ services:
       - TZ=${TZ}
     volumes:
       - ./prowlarr:/config
+      # Logs on a named volume — ._ sidecars EPERM on stat in-container (see deemix).
+      - prowlarr-logs:/config/logs
       - ${DATA_DIR}:/data
 
   # FlareSolverr: solves Cloudflare challenges for Prowlarr indexers tagged to use it
@@ -212,6 +221,8 @@ services:
       - TZ=${TZ}
     volumes:
       - ./lidarr:/config
+      # Logs on a named volume — ._ sidecars EPERM on stat in-container (see deemix).
+      - lidarr-logs:/config/logs
       - ${DATA_DIR}:/data
 
   transmission:
@@ -287,6 +298,8 @@ services:
       - SLSKD_API_KEY=${SLSKD_API_KEY}
     volumes:
       - ./slskd:/app
+      # Logs on a named volume — ._ sidecars EPERM on stat in-container (see deemix).
+      - slskd-logs:/app/logs
       - ${DATA_DIR}/slskd/downloads:/downloads
       - ${DATA_DIR}/slskd/incomplete:/incomplete
       - ${DATA_DIR}/media:/data:ro
@@ -322,3 +335,10 @@ services:
       # docs/how-to/vpn-and-tailscale-access.md. Single-file mount: edits
       # aren't picked up live — `--force-recreate tailscale` after changing it.
       - ./tailscale/serve.json:/config/serve.json:ro
+
+volumes:
+  deemix-logs:
+  jellyfin-logs:
+  prowlarr-logs:
+  lidarr-logs:
+  slskd-logs:
